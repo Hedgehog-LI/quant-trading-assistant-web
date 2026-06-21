@@ -66,15 +66,14 @@ export function DataManagement({ settings, onSaveSettings, onExport, onImport, o
     <div>
       <Alert
         type="info"
-        message={undefined}
-        title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商。"
+        message="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商。"
         style={{ marginBottom: 16 }}
         showIcon
       />
 
       <Card title="数据模式" size="small" style={{ marginBottom: 16 }}>
         <Typography.Paragraph type="secondary">
-          当前业务数据保存在浏览器 localStorage 中。切换到后端模式后，数据将通过 REST API 与后端交互。
+          当前业务数据默认保存在浏览器 localStorage 中。切换到「后端模式」后，相关数据将通过 REST API 与后端交互。
         </Typography.Paragraph>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <div>
@@ -102,10 +101,19 @@ export function DataManagement({ settings, onSaveSettings, onExport, onImport, o
           )}
           {apiMode === 'remote' && (
             <Alert
-              type="warning"
-              message={undefined}
-              title="后端模式为预留联调配置，当前业务 API 仍未完全接入。选择后端模式后部分功能可能暂时无法使用。"
+              type="info"
               showIcon
+              message="后端模式当前接入范围"
+              description={
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>仅「交易账本」（持仓、已结算交易、盈亏、手工当前价）已接入后端 API。</li>
+                  <li>交易记录、自选股、交易计划、盘后复盘等页面仍以本地 localStorage 为主。</li>
+                  <li>
+                    后端模式下交易账本读取后端数据，需后端已有交易流水；交易记录页的本地新增不会自动写入后端（remote 写入后续再做）。
+                  </li>
+                  <li>本系统不连接券商，不自动同步真实交易，当前价为手工维护。</li>
+                </ul>
+              }
             />
           )}
           <Button type="primary" onClick={handleSaveSettings}>

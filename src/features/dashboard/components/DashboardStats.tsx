@@ -18,7 +18,7 @@ export function DashboardStats({ summary }: Props) {
     <div>
       <Alert
         type="info"
-        message={undefined} title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商。"
+        message="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商。"
         style={{ marginBottom: 16 }}
         showIcon
       />
@@ -49,7 +49,7 @@ export function DashboardStats({ summary }: Props) {
       {summary.riskWarnings.length > 0 && (
         <Alert
           type="warning"
-          message={undefined} title="风险提醒"
+          message="风险提醒"
           style={{ marginTop: 16 }}
           icon={<WarningOutlined />}
           showIcon

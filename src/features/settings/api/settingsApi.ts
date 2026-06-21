@@ -8,7 +8,7 @@ const SETTINGS_KEY = 'settings';
 
 const DEFAULT_SETTINGS: AppSettings = {
   apiMode: 'mock',
-  apiBaseUrl: 'http://localhost:8080',
+  apiBaseUrl: '',
 };
 
 export function getSettings(): AppSettings {

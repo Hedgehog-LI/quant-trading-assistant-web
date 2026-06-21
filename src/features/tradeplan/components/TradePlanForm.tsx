@@ -94,7 +94,7 @@ export function TradePlanForm({ open, editingItem, onClose, onSubmit, defaultDat
         {allowedToTrade && (
           <Alert
             type="warning"
-            message={undefined} title="允许交易时必须填写买入条件、止损价和计划仓位"
+            message="允许交易时必须填写买入条件、止损价和计划仓位"
             style={{ marginBottom: 16 }}
           />
         )}
