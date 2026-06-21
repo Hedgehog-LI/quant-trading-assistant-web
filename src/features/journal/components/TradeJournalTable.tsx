@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { TradeJournal, TradeSide, EmotionTag, ReviewStatus } from '../../../shared/types/domain';
 import { TRADE_SIDE_MAP, REVIEW_STATUS_MAP, EMOTION_TAG_MAP } from '../model/options';
 import { formatPrice, formatMoney } from '../../../shared/utils/number';
+import { normalizeTotalFee } from '../../../shared/utils/fee';
 
 interface Props {
   items: TradeJournal[];
@@ -53,6 +54,16 @@ export function TradeJournalTable({ items, onEdit }: Props) {
       render: (v: number) => formatMoney(v),
     },
     {
+      title: '总费用',
+      key: 'totalFee',
+      width: 90,
+      align: 'right',
+      render: (_: unknown, record: TradeJournal) => {
+        const fee = normalizeTotalFee(record);
+        return fee ? formatMoney(fee) : '-';
+      },
+    },
+    {
       title: '情绪',
       dataIndex: 'emotionTags',
       width: 120,
@@ -96,7 +107,7 @@ export function TradeJournalTable({ items, onEdit }: Props) {
       columns={columns}
       size="small"
       pagination={{ pageSize: 20 }}
-      scroll={{ x: 1000 }}
+      scroll={{ x: 1100 }}
     />
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Drawer, Form, Input, Select, InputNumber, Alert, Tag } from 'antd';
+import { Drawer, Form, Input, Select, InputNumber, Alert, Tag, Row, Col, Typography } from 'antd';
 import type { TradeJournal } from '../../../shared/types/domain';
 import { TRADE_SIDE_OPTIONS, EMOTION_TAG_OPTIONS, MISTAKE_TAG_OPTIONS } from '../model/options';
 import { DrawerFooter } from '../../../shared/components/DrawerFooter';
@@ -12,6 +12,11 @@ export interface FormValues {
   side: string;
   price: number;
   quantity: number;
+  commissionFee?: number;
+  stampTax?: number;
+  transferFee?: number;
+  otherFee?: number;
+  totalFee?: number;
   positionRatio?: number;
   planId?: string;
   reason?: string;
@@ -46,6 +51,11 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
           side: editingItem.side,
           price: editingItem.price,
           quantity: editingItem.quantity,
+          commissionFee: editingItem.commissionFee,
+          stampTax: editingItem.stampTax,
+          transferFee: editingItem.transferFee,
+          otherFee: editingItem.otherFee,
+          totalFee: editingItem.totalFee,
           positionRatio: editingItem.positionRatio,
           planId: editingItem.planId,
           reason: editingItem.reason,
@@ -100,11 +110,41 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
         <Form.Item name="quantity" label="数量" rules={[{ required: true, message: '请输入数量' }]}>
           <InputNumber style={{ width: '100%' }} min={1} step={100} />
         </Form.Item>
+        <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12, marginTop: 4, marginBottom: 8 }}>
+          <Typography.Text type="secondary">费用（可选，填写总费用后优先使用）</Typography.Text>
+        </div>
+        <Row gutter={8}>
+          <Col span={12}>
+            <Form.Item name="commissionFee" label="佣金">
+              <InputNumber style={{ width: '100%' }} min={0} precision={6} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="stampTax" label="印花税">
+              <InputNumber style={{ width: '100%' }} min={0} precision={6} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="transferFee" label="过户费">
+              <InputNumber style={{ width: '100%' }} min={0} precision={6} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="otherFee" label="其他费用">
+              <InputNumber style={{ width: '100%' }} min={0} precision={6} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="totalFee" label="总费用" extra="填写后优先">
+              <InputNumber style={{ width: '100%' }} min={0} precision={6} />
+            </Form.Item>
+          </Col>
+        </Row>
         <Form.Item name="planStopLoss" label="计划止损">
           <InputNumber style={{ width: '100%' }} min={0} precision={4} />
         </Form.Item>
         {side === 'BUY' && !form.getFieldValue('planStopLoss') && (
-          <Alert type="warning" message={undefined} title="建议为买入操作设置止损价" style={{ marginBottom: 16 }} />
+          <Alert type="warning" message="建议为买入操作设置止损价" style={{ marginBottom: 16 }} />
         )}
         <Form.Item name="planTakeProfit" label="计划止盈">
           <InputNumber style={{ width: '100%' }} min={0} precision={4} />

@@ -71,6 +71,16 @@ export interface TradeJournal {
   price: number;
   quantity: number;
   amount?: number;
+  /** 佣金 */
+  commissionFee?: number;
+  /** 印花税 */
+  stampTax?: number;
+  /** 过户费 */
+  transferFee?: number;
+  /** 其他费用 */
+  otherFee?: number;
+  /** 总费用：填写后优先使用；为空时按 commissionFee+stampTax+transferFee+otherFee 合计 */
+  totalFee?: number;
   positionRatio?: number;
   planId?: string;
   reason?: string;

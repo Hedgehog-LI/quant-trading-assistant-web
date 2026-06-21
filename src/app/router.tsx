@@ -8,6 +8,7 @@ const WatchlistPage = lazy(() => import('../pages/watchlist').then((m) => ({ def
 const TradePlanPage = lazy(() => import('../pages/trade-plan').then((m) => ({ default: m.TradePlanPage })));
 const RiskPage = lazy(() => import('../pages/risk').then((m) => ({ default: m.RiskPage })));
 const JournalPage = lazy(() => import('../pages/journal').then((m) => ({ default: m.JournalPage })));
+const PortfolioPage = lazy(() => import('../pages/portfolio').then((m) => ({ default: m.PortfolioPage })));
 const ReviewPage = lazy(() => import('../pages/review').then((m) => ({ default: m.ReviewPage })));
 const SettingsPage = lazy(() => import('../pages/settings').then((m) => ({ default: m.SettingsPage })));
 const NotFoundPage = lazy(() => import('../pages/not-found').then((m) => ({ default: m.NotFoundPage })));
@@ -33,6 +34,7 @@ export function AppRouter() {
           <Route path="/trade-plan" element={<TradePlanPage />} />
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/journal" element={<JournalPage />} />
+          <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

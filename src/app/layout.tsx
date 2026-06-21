@@ -5,6 +5,7 @@ import {
   FileTextOutlined,
   CalculatorOutlined,
   BookOutlined,
+  AccountBookOutlined,
   FormOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
@@ -19,6 +20,7 @@ const menuItems = [
   { key: '/trade-plan', icon: <FileTextOutlined />, label: '交易计划' },
   { key: '/risk', icon: <CalculatorOutlined />, label: '风控计算' },
   { key: '/journal', icon: <BookOutlined />, label: '交易记录' },
+  { key: '/portfolio', icon: <AccountBookOutlined />, label: '交易账本' },
   { key: '/review', icon: <FormOutlined />, label: '盘后复盘' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
@@ -60,7 +62,7 @@ export function AppLayout() {
         <Content style={{ margin: 24 }}>
           <Alert
             type="info"
-            message={undefined} title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"
+            message="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"
             style={{ marginBottom: 16 }}
             showIcon
             closable

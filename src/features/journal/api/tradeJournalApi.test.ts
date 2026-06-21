@@ -97,4 +97,53 @@ describe('tradeJournalApi', () => {
     });
     expect(journal.symbol).toBe('300750');
   });
+
+  it('新增带费用字段并透传保存，amount 仍为毛额不含费用', () => {
+    const journal = addTradeJournal({
+      tradeDate: '2026-06-08',
+      symbol: '300750',
+      side: 'BUY',
+      price: 100,
+      quantity: 100,
+      commissionFee: 5,
+      stampTax: 3,
+      emotionTags: [],
+      mistakeTags: [],
+    });
+    expect(journal.commissionFee).toBe(5);
+    expect(journal.stampTax).toBe(3);
+    expect(journal.totalFee).toBeUndefined();
+    expect(journal.amount).toBeCloseTo(10000, 2);
+  });
+
+  it('新增时 totalFee 字段优先透传', () => {
+    const journal = addTradeJournal({
+      tradeDate: '2026-06-08',
+      symbol: '300750',
+      side: 'BUY',
+      price: 100,
+      quantity: 100,
+      commissionFee: 5,
+      totalFee: 8,
+      emotionTags: [],
+      mistakeTags: [],
+    });
+    expect(journal.totalFee).toBe(8);
+    expect(journal.commissionFee).toBe(5);
+  });
+
+  it('更新费用字段', () => {
+    const journal = addTradeJournal({
+      tradeDate: '2026-06-08',
+      symbol: '300750',
+      side: 'BUY',
+      price: 100,
+      quantity: 100,
+      emotionTags: [],
+      mistakeTags: [],
+    });
+    const updated = updateTradeJournal(journal.id, { commissionFee: 10, stampTax: 2 });
+    expect(updated?.commissionFee).toBe(10);
+    expect(updated?.stampTax).toBe(2);
+  });
 });

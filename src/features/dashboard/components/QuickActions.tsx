@@ -4,6 +4,7 @@ import {
   FileTextOutlined,
   CalculatorOutlined,
   BookOutlined,
+  WalletOutlined,
   FormOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
@@ -25,6 +26,9 @@ export function QuickActions() {
         </Button>
         <Button icon={<BookOutlined />} onClick={() => navigate('/journal')}>
           记录交易
+        </Button>
+        <Button icon={<WalletOutlined />} onClick={() => navigate('/portfolio')}>
+          查看交易账本
         </Button>
         <Button icon={<FormOutlined />} onClick={() => navigate('/review')}>
           写复盘
