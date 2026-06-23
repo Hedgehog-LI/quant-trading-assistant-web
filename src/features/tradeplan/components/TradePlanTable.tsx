@@ -1,17 +1,21 @@
-import { Table, Tag, Button, Space } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import { Table, Tag, Button, Space, Spin, Alert, Empty, Popconfirm } from 'antd';
+import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { TradePlan, PlanStatus } from '../../../shared/types/domain';
+import type { EntityId, TradePlan, PlanStatus } from '../../../shared/types/domain';
 import { PLAN_STATUS_MAP } from '../model/options';
 import { formatPrice, formatPercent } from '../../../shared/utils/number';
 
 interface Props {
   items: TradePlan[];
+  loading: boolean;
+  error: string | null;
+  isEmpty: boolean;
   onEdit: (item: TradePlan) => void;
-  onUpdateStatus: (id: string, status: TradePlan['planStatus']) => void;
+  onUpdateStatus: (id: EntityId, status: TradePlan['planStatus']) => void;
+  onRemove: (id: EntityId) => void;
 }
 
-export function TradePlanTable({ items, onEdit, onUpdateStatus }: Props) {
+export function TradePlanTable({ items, loading, error, isEmpty, onEdit, onUpdateStatus, onRemove }: Props) {
   const columns: ColumnsType<TradePlan> = [
     {
       title: '股票代码',
@@ -68,7 +72,7 @@ export function TradePlanTable({ items, onEdit, onUpdateStatus }: Props) {
     },
     {
       title: '操作',
-      width: 200,
+      width: 240,
       render: (_: unknown, record: TradePlan) => (
         <Space size="small">
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
@@ -89,10 +93,38 @@ export function TradePlanTable({ items, onEdit, onUpdateStatus }: Props) {
               取消
             </Button>
           )}
+          <Popconfirm
+            title="确定删除该交易计划？"
+            description="删除后不可恢复"
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            cancelText="取消"
+            onConfirm={() => onRemove(record.id)}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
   ];
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: 48 }}>
+        <Spin />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <Alert type="error" showIcon message="加载失败" description={error} />;
+  }
+
+  if (isEmpty) {
+    return <Empty description="暂无交易计划" />;
+  }
 
   return (
     <Table<TradePlan>

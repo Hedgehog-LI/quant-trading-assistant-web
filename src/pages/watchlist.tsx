@@ -1,16 +1,25 @@
 import { useState } from 'react';
-import { Typography, Button, Space, Input, Select, Switch, message } from 'antd';
+import { Typography, Button, Space, Input, Select, Switch, message, Spin, Alert, Empty, Tag } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useWatchlist, useWatchlistFiltered } from '../features/watchlist/hooks/useWatchlist';
 import { WatchlistTable } from '../features/watchlist/components/WatchlistTable';
 import { WatchlistForm } from '../features/watchlist/components/WatchlistForm';
 import type { FormValues as WatchlistFormValues } from '../features/watchlist/components/WatchlistForm';
 import { TRADE_STYLE_OPTIONS } from '../features/watchlist/model/options';
-import type { WatchlistItem } from '../shared/types/domain';
+import type { EntityId, WatchlistItem } from '../shared/types/domain';
 
 export function WatchlistPage() {
-  const { items, add, update, toggleEnabled } = useWatchlist();
-  const { filtered, keyword, setKeyword, tradeStyleFilter, setTradeStyleFilter, showDisabled, setShowDisabled } = useWatchlistFiltered(items);
+  const { items, loading, error, isEmpty, apiMode, refresh, add, update, toggleEnabled, remove } =
+    useWatchlist();
+  const {
+    filtered,
+    keyword,
+    setKeyword,
+    tradeStyleFilter,
+    setTradeStyleFilter,
+    showDisabled,
+    setShowDisabled,
+  } = useWatchlistFiltered(items);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<WatchlistItem | null>(null);
@@ -25,13 +34,22 @@ export function WatchlistPage() {
     setFormOpen(true);
   };
 
-  const handleSubmit = (values: WatchlistFormValues) => {
+  const handleRemove = async (id: EntityId) => {
+    try {
+      await remove(id);
+      message.success('已删除');
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '删除失败');
+    }
+  };
+
+  const handleSubmit = async (values: WatchlistFormValues) => {
     try {
       if (editingItem) {
-        update(editingItem.id, values as Partial<Omit<WatchlistItem, 'id' | 'createdAt' | 'updatedAt'>>);
+        await update(editingItem.id, values as Partial<Omit<WatchlistItem, 'id' | 'createdAt' | 'updatedAt'>>);
         message.success('更新成功');
       } else {
-        add(values as Omit<WatchlistItem, 'id' | 'enabled' | 'createdAt' | 'updatedAt'>);
+        await add(values as Omit<WatchlistItem, 'id' | 'enabled' | 'createdAt' | 'updatedAt'>);
         message.success('新增成功');
       }
       setFormOpen(false);
@@ -44,7 +62,14 @@ export function WatchlistPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>自选股</Typography.Title>
+        <Space align="center">
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            自选股
+          </Typography.Title>
+          <Tag color={apiMode === 'remote' ? 'blue' : 'default'}>
+            {apiMode === 'remote' ? '后端模式' : '本地模式'}
+          </Tag>
+        </Space>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
           新增自选股
         </Button>
@@ -71,14 +96,40 @@ export function WatchlistPage() {
           <Switch checked={showDisabled} onChange={setShowDisabled} size="small" />
           <span style={{ fontSize: 13, color: '#666' }}>显示已停用</span>
         </Space>
+        <Button onClick={() => void refresh()}>刷新</Button>
       </Space>
 
-      <WatchlistTable items={filtered} onEdit={handleEdit} onToggleEnabled={toggleEnabled} />
+      {error ? (
+        <Alert
+          type="error"
+          showIcon
+          message="加载失败"
+          description={error}
+          action={<Button size="small" onClick={() => void refresh()}>重试</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      ) : loading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <Spin />
+        </div>
+      ) : isEmpty ? (
+        <Empty description="暂无自选股" style={{ padding: 48 }} />
+      ) : (
+        <WatchlistTable
+          items={filtered}
+          onEdit={handleEdit}
+          onToggleEnabled={toggleEnabled}
+          onRemove={handleRemove}
+        />
+      )}
 
       <WatchlistForm
         open={formOpen}
         editingItem={editingItem}
-        onClose={() => { setFormOpen(false); setEditingItem(null); }}
+        onClose={() => {
+          setFormOpen(false);
+          setEditingItem(null);
+        }}
         onSubmit={handleSubmit}
       />
     </div>

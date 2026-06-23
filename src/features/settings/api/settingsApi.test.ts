@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getSettings, saveSettings, exportData, importData, clearData } from './settingsApi';
-import { getItem } from '../../../shared/api/localStorageClient';
+import { clearAll, getItem } from '../../../shared/api/localStorageClient';
 
 beforeEach(() => {
-  localStorage.clear();
+  clearAll();
 });
 
 describe('settingsApi', () => {
@@ -30,7 +30,7 @@ describe('settingsApi', () => {
     const exported = exportData();
     expect(exported['qta:settings']).toBeDefined();
 
-    localStorage.clear();
+    clearAll();
     importData(exported);
     expect(getSettings().apiBaseUrl).toBe('http://x:8080');
 

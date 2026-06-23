@@ -1,7 +1,7 @@
 import { Table, Tag, Button, Space, Popconfirm } from 'antd';
-import { EditOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { EditOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { WatchlistItem, TradeStyle, AttentionLevel } from '../../../shared/types/domain';
+import type { WatchlistItem, TradeStyle, AttentionLevel, EntityId } from '../../../shared/types/domain';
 import { TRADE_STYLE_MAP, ATTENTION_LEVEL_MAP } from '../model/options';
 import { formatPrice } from '../../../shared/utils/number';
 import { formatDate } from '../../../shared/utils/date';
@@ -9,10 +9,11 @@ import { formatDate } from '../../../shared/utils/date';
 interface Props {
   items: WatchlistItem[];
   onEdit: (item: WatchlistItem) => void;
-  onToggleEnabled: (id: string, enabled: boolean) => void;
+  onToggleEnabled: (id: EntityId, enabled: boolean) => void;
+  onRemove: (id: EntityId) => void;
 }
 
-export function WatchlistTable({ items, onEdit, onToggleEnabled }: Props) {
+export function WatchlistTable({ items, onEdit, onToggleEnabled, onRemove }: Props) {
   const columns: ColumnsType<WatchlistItem> = [
     {
       title: '代码',
@@ -85,7 +86,7 @@ export function WatchlistTable({ items, onEdit, onToggleEnabled }: Props) {
     },
     {
       title: '操作',
-      width: 140,
+      width: 200,
       render: (_: unknown, record: WatchlistItem) => (
         <Space size="small">
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
@@ -110,6 +111,18 @@ export function WatchlistTable({ items, onEdit, onToggleEnabled }: Props) {
               启用
             </Button>
           )}
+          <Popconfirm
+            title="确定删除该自选股？"
+            description="删除后不可恢复"
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            cancelText="取消"
+            onConfirm={() => onRemove(record.id)}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -122,7 +135,7 @@ export function WatchlistTable({ items, onEdit, onToggleEnabled }: Props) {
       columns={columns}
       size="small"
       pagination={{ pageSize: 20, showSizeChanger: true }}
-      scroll={{ x: 1200 }}
+      scroll={{ x: 1280 }}
     />
   );
 }

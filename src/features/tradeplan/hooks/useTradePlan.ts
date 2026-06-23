@@ -1,41 +1,119 @@
-import { useState, useCallback, useMemo } from 'react';
+/**
+ * 交易计划状态管理 hook。
+ *
+ * 跟随项目现有风格（useState + useCallback + refresh），不引入 react-query。
+ * - mount 时拉取全量计划；
+ * - 维护 loading / error / empty 三态；
+ * - add / update / updateStatus 均为 async，写入后 refresh；
+ * - apiMode 供页面展示数据源提示。
+ */
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   getTradePlans,
   addTradePlan,
   updateTradePlan,
+  updateTradePlanStatus,
+  deleteTradePlan,
 } from '../api/tradePlanApi';
+import type { TradePlanInput, TradePlanUpdateInput } from '../api/tradePlanApi';
+import { getSettings } from '../../settings/api/settingsApi';
 import { today } from '../../../shared/utils/date';
-import type { TradePlan } from '../../../shared/types/domain';
+import type { EntityId, PlanStatus, TradePlan } from '../../../shared/types/domain';
 
-export function useTradePlan() {
-  const [items, setItems] = useState<TradePlan[]>(() => getTradePlans());
+export interface UseTradePlanResult {
+  items: TradePlan[];
+  loading: boolean;
+  error: string | null;
+  isEmpty: boolean;
+  apiMode: 'mock' | 'remote';
+  refresh: () => Promise<void>;
+  add: (input: TradePlanInput) => Promise<void>;
+  update: (id: EntityId, input: TradePlanUpdateInput) => Promise<void>;
+  updateStatus: (id: EntityId, planStatus: PlanStatus) => Promise<void>;
+  remove: (id: EntityId) => Promise<void>;
+}
 
-  const refresh = useCallback(() => {
-    setItems(getTradePlans());
+export function useTradePlan(): UseTradePlanResult {
+  const [items, setItems] = useState<TradePlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const apiMode = getSettings().apiMode;
+
+  // 手动刷新（事件触发，含 loading 态切换）。
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getTradePlans();
+      setItems(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 挂载时拉取：fetch 逻辑内联为局部 async 函数，所有 setState 都在 await 之后，
+  // effect 同步路径不触发 setState（loading 初值已为 true）。
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await getTradePlans();
+        if (cancelled) return;
+        setItems(data);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const add = useCallback(
-    (input: Omit<TradePlan, 'id' | 'createdAt' | 'updatedAt'>) => {
+    async (input: TradePlanInput) => {
       const upper = input.symbol.trim().toUpperCase();
       const planDate = input.planDate;
       if (items.some((i) => i.symbol === upper && i.planDate === planDate)) {
         throw new Error(`该股票在 ${planDate} 已有交易计划`);
       }
-      addTradePlan(input);
-      refresh();
+      await addTradePlan(input);
+      await refresh();
     },
     [items, refresh],
   );
 
   const update = useCallback(
-    (id: string, input: Partial<Omit<TradePlan, 'id' | 'createdAt' | 'updatedAt'>>) => {
-      updateTradePlan(id, input);
-      refresh();
+    async (id: EntityId, input: TradePlanUpdateInput) => {
+      await updateTradePlan(id, input);
+      await refresh();
     },
     [refresh],
   );
 
-  return { items, refresh, add, update };
+  const updateStatus = useCallback(
+    async (id: EntityId, planStatus: PlanStatus) => {
+      await updateTradePlanStatus(id, planStatus);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const remove = useCallback(
+    async (id: EntityId) => {
+      await deleteTradePlan(id);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const isEmpty = !loading && !error && items.length === 0;
+
+  return { items, loading, error, isEmpty, apiMode, refresh, add, update, updateStatus, remove };
 }
 
 export function useTradePlanFiltered(items: TradePlan[]) {

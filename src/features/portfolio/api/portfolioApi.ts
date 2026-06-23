@@ -12,6 +12,7 @@
  */
 import { client } from '../../../shared/api/client';
 import type { ApiResponse } from '../../../shared/api/types';
+import { unwrap } from '../../../shared/api/unwrappers';
 import { today } from '../../../shared/utils/date';
 import { getSettings } from '../../settings/api/settingsApi';
 import { getTradeJournals } from '../../journal/api/tradeJournalApi';
@@ -61,21 +62,21 @@ export interface PortfolioApi {
 // ============ mock 实现 ============
 
 /** 读本地流水 + 当前价，实时 FIFO 计算。每次调用都重读，保证数据新鲜。 */
-function computeAll() {
-  const journals = getTradeJournals();
+async function computeAll() {
+  const journals = await getTradeJournals();
   const prices = getLatestPriceBySymbol();
   return calculateAll(toFlowItems(journals), prices, today());
 }
 
 const mockApi: PortfolioApi = {
   async getSummary() {
-    return computeAll().summary;
+    return (await computeAll()).summary;
   },
   async getPositions() {
-    return computeAll().positions;
+    return (await computeAll()).positions;
   },
   async getClosedTrades() {
-    return computeAll().closedTrades;
+    return (await computeAll()).closedTrades;
   },
   async getPrices() {
     return getAllSnapshots();
@@ -86,15 +87,7 @@ const mockApi: PortfolioApi = {
 };
 
 // ============ remote 实现 ============
-
-async function unwrap<T>(p: Promise<{ data: ApiResponse<T> }>): Promise<T> {
-  const res = await p;
-  const body = res.data;
-  if (!body.success || body.data == null) {
-    throw new Error(body.message ?? '接口返回失败');
-  }
-  return body.data;
-}
+// unwrap 统一从 shared/api/unwrappers 引入。
 
 const remoteApi: PortfolioApi = {
   async getSummary() {

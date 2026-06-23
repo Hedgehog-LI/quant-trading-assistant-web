@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Drawer, Form, Input, Select, InputNumber, Alert, Tag, Row, Col, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+import { Drawer, Form, Input, Select, InputNumber, Alert, Tag, Row, Col, Typography, message } from 'antd';
 import type { TradeJournal } from '../../../shared/types/domain';
 import { TRADE_SIDE_OPTIONS, EMOTION_TAG_OPTIONS, MISTAKE_TAG_OPTIONS } from '../model/options';
 import { DrawerFooter } from '../../../shared/components/DrawerFooter';
@@ -32,12 +32,13 @@ interface Props {
   open: boolean;
   editingItem: TradeJournal | null;
   onClose: () => void;
-  onSubmit: (values: FormValues) => void;
+  onSubmit: (values: FormValues) => Promise<void>;
   defaultDate: string;
 }
 
 export function TradeJournalForm({ open, editingItem, onClose, onSubmit, defaultDate }: Props) {
   const [form] = Form.useForm<FormValues>();
+  const [submitting, setSubmitting] = useState(false);
   const side = Form.useWatch('side', form);
 
   useEffect(() => {
@@ -57,7 +58,8 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
           otherFee: editingItem.otherFee,
           totalFee: editingItem.totalFee,
           positionRatio: editingItem.positionRatio,
-          planId: editingItem.planId,
+          // planId 后端可能是数字主键，表单 Select 统一按字符串处理。
+          planId: editingItem.planId === undefined ? undefined : String(editingItem.planId),
           reason: editingItem.reason,
           planStopLoss: editingItem.planStopLoss,
           planTakeProfit: editingItem.planTakeProfit,
@@ -73,9 +75,16 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
     }
   }, [open, editingItem, form, defaultDate]);
 
-  const handleFinish = (values: FormValues) => {
-    onSubmit(values);
-    form.resetFields();
+  const handleFinish = async (values: FormValues) => {
+    setSubmitting(true);
+    try {
+      await onSubmit(values);
+      form.resetFields();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '操作失败');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -199,7 +208,12 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
           <Input.TextArea rows={2} maxLength={1024} />
         </Form.Item>
       </Form>
-      <DrawerFooter onCancel={handleClose} onSubmit={() => form.submit()} submitText={editingItem ? '保存' : '新增'} />
+      <DrawerFooter
+        onCancel={handleClose}
+        onSubmit={() => form.submit()}
+        submitText={editingItem ? '保存' : '新增'}
+        loading={submitting}
+      />
     </Drawer>
   );
 }

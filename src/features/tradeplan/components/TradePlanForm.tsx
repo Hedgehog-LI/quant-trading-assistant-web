@@ -25,10 +25,12 @@ interface Props {
   editingItem: TradePlan | null;
   onClose: () => void;
   onSubmit: (values: FormValues) => void;
+  /** 提交中：禁用按钮并显示 loading（async 提交防重复点击）。 */
+  submitting?: boolean;
   defaultDate: string;
 }
 
-export function TradePlanForm({ open, editingItem, onClose, onSubmit, defaultDate }: Props) {
+export function TradePlanForm({ open, editingItem, onClose, onSubmit, submitting = false, defaultDate }: Props) {
   const [form] = Form.useForm<FormValues>();
   const allowedToTrade = Form.useWatch('allowedToTrade', form);
 
@@ -128,7 +130,7 @@ export function TradePlanForm({ open, editingItem, onClose, onSubmit, defaultDat
           <Input.TextArea rows={2} maxLength={2048} />
         </Form.Item>
       </Form>
-      <DrawerFooter onCancel={handleClose} onSubmit={() => form.submit()} submitText={editingItem ? '保存' : '新增'} />
+      <DrawerFooter onCancel={handleClose} onSubmit={() => form.submit()} submitText={editingItem ? '保存' : '新增'} loading={submitting} />
     </Drawer>
   );
 }

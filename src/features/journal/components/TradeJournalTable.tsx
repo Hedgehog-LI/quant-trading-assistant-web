@@ -1,7 +1,7 @@
-import { Table, Tag, Button } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import { Table, Tag, Button, Space, Popconfirm } from 'antd';
+import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { TradeJournal, TradeSide, EmotionTag, ReviewStatus } from '../../../shared/types/domain';
+import type { EntityId, TradeJournal, TradeSide, EmotionTag, ReviewStatus } from '../../../shared/types/domain';
 import { TRADE_SIDE_MAP, REVIEW_STATUS_MAP, EMOTION_TAG_MAP } from '../model/options';
 import { formatPrice, formatMoney } from '../../../shared/utils/number';
 import { normalizeTotalFee } from '../../../shared/utils/fee';
@@ -9,9 +9,10 @@ import { normalizeTotalFee } from '../../../shared/utils/fee';
 interface Props {
   items: TradeJournal[];
   onEdit: (item: TradeJournal) => void;
+  onRemove: (id: EntityId) => void;
 }
 
-export function TradeJournalTable({ items, onEdit }: Props) {
+export function TradeJournalTable({ items, onEdit, onRemove }: Props) {
   const columns: ColumnsType<TradeJournal> = [
     {
       title: '日期',
@@ -91,11 +92,25 @@ export function TradeJournalTable({ items, onEdit }: Props) {
     },
     {
       title: '操作',
-      width: 80,
+      width: 130,
       render: (_: unknown, record: TradeJournal) => (
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
-          编辑
-        </Button>
+        <Space size="small">
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(record)}>
+            编辑
+          </Button>
+          <Popconfirm
+            title="确定删除该交易记录？"
+            description="删除后不可恢复"
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            cancelText="取消"
+            onConfirm={() => onRemove(record.id)}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

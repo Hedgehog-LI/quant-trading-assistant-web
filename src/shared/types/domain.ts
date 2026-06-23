@@ -22,10 +22,18 @@ export type MistakeTag =
   | 'NO_PLAN'
   | 'BROKE_RULE';
 
+/**
+ * 实体 ID 类型。
+ * - mock 模式：前端 generateId 生成的 UUID 字符串。
+ * - remote 模式：后端数据库主键 Long（数字）。
+ * 两种模式运行时不混用；React key、JSON 序列化、字符串化均兼容。
+ */
+export type EntityId = string | number;
+
 // ============ 领域模型 ============
 
 export interface WatchlistItem {
-  id: string;
+  id: EntityId;
   symbol: string;
   name: string;
   market?: MarketType;
@@ -43,7 +51,7 @@ export interface WatchlistItem {
 }
 
 export interface TradePlan {
-  id: string;
+  id: EntityId;
   planDate: string;
   symbol: string;
   name?: string;
@@ -62,7 +70,7 @@ export interface TradePlan {
 }
 
 export interface TradeJournal {
-  id: string;
+  id: EntityId;
   tradeDate: string;
   tradeTime?: string;
   symbol: string;
@@ -82,7 +90,7 @@ export interface TradeJournal {
   /** 总费用：填写后优先使用；为空时按 commissionFee+stampTax+transferFee+otherFee 合计 */
   totalFee?: number;
   positionRatio?: number;
-  planId?: string;
+  planId?: EntityId;
   reason?: string;
   planStopLoss?: number;
   planTakeProfit?: number;
@@ -96,7 +104,7 @@ export interface TradeJournal {
 }
 
 export interface ReviewNote {
-  id: string;
+  id: EntityId;
   reviewDate: string;
   symbol?: string;
   title: string;
@@ -107,7 +115,7 @@ export interface ReviewNote {
   wrongThings?: string;
   ruleChanges?: string;
   nextActions?: string;
-  linkedJournalIds: string[];
+  linkedJournalIds: EntityId[];
   createdAt: string;
   updatedAt: string;
 }

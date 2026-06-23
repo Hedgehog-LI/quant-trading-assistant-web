@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { Typography, Button, Space, Input, DatePicker, message } from 'antd';
+import { Typography, Button, Space, Input, DatePicker, message, Spin, Alert, Tag } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useReview, useReviewFiltered } from '../features/review/hooks/useReview';
 import { ReviewTable } from '../features/review/components/ReviewTable';
 import { ReviewForm } from '../features/review/components/ReviewForm';
 import type { FormValues as ReviewFormValues } from '../features/review/components/ReviewForm';
-import type { ReviewNote } from '../shared/types/domain';
+import type { EntityId, ReviewNote } from '../shared/types/domain';
 
 export function ReviewPage() {
-  const { items, add, update } = useReview();
+  const { items, add, update, remove, loading, error, isEmpty, apiMode } = useReview();
   const { filtered, dateFilter, setDateFilter, symbolFilter, setSymbolFilter } = useReviewFiltered(items);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -25,13 +25,22 @@ export function ReviewPage() {
     setFormOpen(true);
   };
 
-  const handleSubmit = (values: ReviewFormValues) => {
+  const handleRemove = async (id: EntityId) => {
+    try {
+      await remove(id);
+      message.success('已删除');
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '删除失败');
+    }
+  };
+
+  const handleSubmit = async (values: ReviewFormValues) => {
     try {
       if (editingItem) {
-        update(editingItem.id, values as Partial<Omit<ReviewNote, 'id' | 'createdAt' | 'updatedAt'>>);
+        await update(editingItem.id, values as Partial<Omit<ReviewNote, 'id' | 'createdAt' | 'updatedAt'>>);
         message.success('更新成功');
       } else {
-        add(values as Omit<ReviewNote, 'id' | 'createdAt' | 'updatedAt'>);
+        await add(values as Omit<ReviewNote, 'id' | 'createdAt' | 'updatedAt'>);
         message.success('新增成功');
       }
       setFormOpen(false);
@@ -44,8 +53,13 @@ export function ReviewPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>盘后复盘</Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+        <Space align="center">
+          <Typography.Title level={4} style={{ margin: 0 }}>盘后复盘</Typography.Title>
+          <Tag color={apiMode === 'remote' ? 'blue' : 'default'}>
+            {apiMode === 'remote' ? '后端模式' : '本地模式'}
+          </Tag>
+        </Space>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={loading}>
           写复盘
         </Button>
       </div>
@@ -66,7 +80,25 @@ export function ReviewPage() {
         />
       </Space>
 
-      <ReviewTable items={filtered} onEdit={handleEdit} />
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          message="加载失败"
+          description={error}
+          action={<Button size="small" onClick={() => location.reload()}>重试</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      <Spin spinning={loading}>
+        <ReviewTable items={filtered} onEdit={handleEdit} onRemove={handleRemove} />
+        {isEmpty && !error && (
+          <div style={{ textAlign: 'center', color: '#999', marginTop: 16 }}>
+            暂无复盘记录，点击右上角「写复盘」开始记录
+          </div>
+        )}
+      </Spin>
 
       <ReviewForm
         open={formOpen}

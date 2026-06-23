@@ -106,11 +106,10 @@ export function DataManagement({ settings, onSaveSettings, onExport, onImport, o
               message="后端模式当前接入范围"
               description={
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  <li>仅「交易账本」（持仓、已结算交易、盈亏、手工当前价）已接入后端 API。</li>
-                  <li>交易记录、自选股、交易计划、盘后复盘等页面仍以本地 localStorage 为主。</li>
-                  <li>
-                    后端模式下交易账本读取后端数据，需后端已有交易流水；交易记录页的本地新增不会自动写入后端（remote 写入后续再做）。
-                  </li>
+                  <li>「交易账本」「自选股」「交易计划」「交易记录」「盘后复盘」均已接入后端 API：新增、编辑、查询均走后端，切换回本地模式仍使用 localStorage。</li>
+                  <li>「今日工作台」会从后端并发拉取上述数据并聚合展示。</li>
+                  <li>风控计算器为纯前端计算，不涉及后端持久化。</li>
+                  <li>后端模式下请确保后端服务可达且数据库已有对应数据；本地模式录入的数据不会自动同步到后端。</li>
                   <li>本系统不连接券商，不自动同步真实交易，当前价为手工维护。</li>
                 </ul>
               }

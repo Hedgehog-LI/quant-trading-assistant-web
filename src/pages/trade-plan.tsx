@@ -6,14 +6,15 @@ import { useTradePlan, useTradePlanFiltered } from '../features/tradeplan/hooks/
 import { TradePlanTable } from '../features/tradeplan/components/TradePlanTable';
 import { TradePlanForm } from '../features/tradeplan/components/TradePlanForm';
 import type { FormValues as TradePlanFormValues } from '../features/tradeplan/components/TradePlanForm';
-import type { TradePlan } from '../shared/types/domain';
+import type { EntityId, PlanStatus, TradePlan } from '../shared/types/domain';
 
 export function TradePlanPage() {
-  const { items, add, update } = useTradePlan();
+  const { items, loading, error, isEmpty, add, update, updateStatus, remove } = useTradePlan();
   const { filtered, dateFilter, setDateFilter, symbolFilter, setSymbolFilter } = useTradePlanFiltered(items);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TradePlan | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleAdd = () => {
     setEditingItem(null);
@@ -25,45 +26,61 @@ export function TradePlanPage() {
     setFormOpen(true);
   };
 
-  const handleSubmit = (values: TradePlanFormValues) => {
-    try {
-      // 校验：allowedToTrade=true 时必须填 buyCondition、stopLossPrice、plannedPositionRatio
-      if (values.allowedToTrade) {
-        if (!values.buyCondition) {
-          message.error('允许交易时必须填写买入条件');
-          return;
-        }
-        if (!values.stopLossPrice) {
-          message.error('允许交易时必须填写止损价');
-          return;
-        }
-        if (!values.plannedPositionRatio && values.plannedPositionRatio !== 0) {
-          message.error('允许交易时必须填写计划仓位比例');
-          return;
-        }
-      }
-      // 校验：takeProfitPrice > stopLossPrice
-      if (values.takeProfitPrice && values.stopLossPrice && Number(values.takeProfitPrice) <= Number(values.stopLossPrice)) {
-        message.error('止盈价必须大于止损价');
+  const handleSubmit = async (values: TradePlanFormValues) => {
+    // 校验：allowedToTrade=true 时必须填 buyCondition、stopLossPrice、plannedPositionRatio
+    if (values.allowedToTrade) {
+      if (!values.buyCondition) {
+        message.error('允许交易时必须填写买入条件');
         return;
       }
+      if (!values.stopLossPrice) {
+        message.error('允许交易时必须填写止损价');
+        return;
+      }
+      if (!values.plannedPositionRatio && values.plannedPositionRatio !== 0) {
+        message.error('允许交易时必须填写计划仓位比例');
+        return;
+      }
+    }
+    // 校验：takeProfitPrice > stopLossPrice
+    if (values.takeProfitPrice && values.stopLossPrice && Number(values.takeProfitPrice) <= Number(values.stopLossPrice)) {
+      message.error('止盈价必须大于止损价');
+      return;
+    }
+    setSubmitting(true);
+    try {
       if (editingItem) {
-        update(editingItem.id, values as Partial<Omit<TradePlan, 'id' | 'createdAt' | 'updatedAt'>>);
+        await update(editingItem.id, values as Partial<Omit<TradePlan, 'id' | 'createdAt' | 'updatedAt'>>);
         message.success('更新成功');
       } else {
-        add(values as Omit<TradePlan, 'id' | 'createdAt' | 'updatedAt'>);
+        await add(values as Omit<TradePlan, 'id' | 'createdAt' | 'updatedAt'>);
         message.success('新增成功');
       }
       setFormOpen(false);
       setEditingItem(null);
     } catch (e) {
       message.error(e instanceof Error ? e.message : '操作失败');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleUpdateStatus = (id: string, planStatus: TradePlan['planStatus']) => {
-    update(id, { planStatus });
-    message.success('状态已更新');
+  const handleUpdateStatus = async (id: EntityId, planStatus: PlanStatus) => {
+    try {
+      await updateStatus(id, planStatus);
+      message.success('状态已更新');
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '操作失败');
+    }
+  };
+
+  const handleRemove = async (id: EntityId) => {
+    try {
+      await remove(id);
+      message.success('已删除');
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '删除失败');
+    }
   };
 
   return (
@@ -91,13 +108,22 @@ export function TradePlanPage() {
         />
       </Space>
 
-      <TradePlanTable items={filtered} onEdit={handleEdit} onUpdateStatus={handleUpdateStatus} />
+      <TradePlanTable
+        items={filtered}
+        loading={loading}
+        error={error}
+        isEmpty={isEmpty}
+        onEdit={handleEdit}
+        onUpdateStatus={handleUpdateStatus}
+        onRemove={handleRemove}
+      />
 
       <TradePlanForm
         open={formOpen}
         editingItem={editingItem}
         onClose={() => { setFormOpen(false); setEditingItem(null); }}
         onSubmit={handleSubmit}
+        submitting={submitting}
         defaultDate={dateFilter}
       />
     </div>

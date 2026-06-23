@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
-import { Drawer, Form, Input, Checkbox } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Drawer, Form, Input, Checkbox, Spin, Empty } from 'antd';
+import type { TradeJournal } from '../../../shared/types/domain';
 import type { ReviewNote } from '../../../shared/types/domain';
 import { getTradeJournals } from '../../journal/api/tradeJournalApi';
 import { DrawerFooter } from '../../../shared/components/DrawerFooter';
@@ -22,17 +23,37 @@ interface Props {
   open: boolean;
   editingItem: ReviewNote | null;
   onClose: () => void;
-  onSubmit: (values: FormValues) => void;
+  /** 异步提交：表单内部 await，捕获错误后通过 message.error 反馈。 */
+  onSubmit: (values: FormValues) => Promise<void>;
   defaultDate: string;
 }
 
 export function ReviewForm({ open, editingItem, onClose, onSubmit, defaultDate }: Props) {
   const [form] = Form.useForm<FormValues>();
+  const [pendingJournals, setPendingJournals] = useState<TradeJournal[]>([]);
+  const [journalsLoading, setJournalsLoading] = useState(false);
 
-  const pendingJournals = useMemo(
-    () => open ? getTradeJournals().filter((j) => j.reviewStatus === 'PENDING') : [],
-    [open],
-  );
+  // getTradeJournals 当前同步；改 async 后兼容。drawer 打开时异步加载待复盘交易。
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const load = async () => {
+      setJournalsLoading(true);
+      try {
+        const all = await getTradeJournals();
+        if (cancelled) return;
+        setPendingJournals(all.filter((j) => j.reviewStatus === 'PENDING'));
+      } catch {
+        if (!cancelled) setPendingJournals([]);
+      } finally {
+        if (!cancelled) setJournalsLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -48,7 +69,7 @@ export function ReviewForm({ open, editingItem, onClose, onSubmit, defaultDate }
           wrongThings: editingItem.wrongThings,
           ruleChanges: editingItem.ruleChanges,
           nextActions: editingItem.nextActions,
-          linkedJournalIds: editingItem.linkedJournalIds,
+          linkedJournalIds: editingItem.linkedJournalIds.map((id) => String(id)),
         });
       } else {
         form.resetFields();
@@ -57,8 +78,8 @@ export function ReviewForm({ open, editingItem, onClose, onSubmit, defaultDate }
     }
   }, [open, editingItem, form, defaultDate]);
 
-  const handleFinish = (values: FormValues) => {
-    onSubmit(values);
+  const handleFinish = async (values: FormValues) => {
+    await onSubmit(values);
     form.resetFields();
   };
 
@@ -66,6 +87,22 @@ export function ReviewForm({ open, editingItem, onClose, onSubmit, defaultDate }
     form.resetFields();
     onClose();
   };
+
+  const pendingJournalsContent = useMemo(() => {
+    if (journalsLoading) {
+      return <Spin size="small" />;
+    }
+    if (pendingJournals.length === 0) {
+      return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无待复盘交易" />;
+    }
+    return pendingJournals.map((j) => (
+      <div key={j.id} style={{ marginBottom: 4 }}>
+        <Checkbox value={String(j.id)}>
+          {j.tradeDate} {j.symbol} {j.side === 'BUY' ? '买入' : '卖出'} {j.price} x {j.quantity}
+        </Checkbox>
+      </div>
+    ));
+  }, [journalsLoading, pendingJournals]);
 
   return (
     <Drawer
@@ -108,18 +145,15 @@ export function ReviewForm({ open, editingItem, onClose, onSubmit, defaultDate }
         </Form.Item>
         <Form.Item name="linkedJournalIds" label="关联交易记录">
           <Checkbox.Group style={{ width: '100%' }}>
-            {pendingJournals.length === 0 && <div style={{ color: '#999' }}>无待复盘交易</div>}
-            {pendingJournals.map((j) => (
-              <div key={j.id} style={{ marginBottom: 4 }}>
-                <Checkbox value={j.id}>
-                  {j.tradeDate} {j.symbol} {j.side === 'BUY' ? '买入' : '卖出'} {j.price} x {j.quantity}
-                </Checkbox>
-              </div>
-            ))}
+            {pendingJournalsContent}
           </Checkbox.Group>
         </Form.Item>
       </Form>
-      <DrawerFooter onCancel={handleClose} onSubmit={() => form.submit()} submitText={editingItem ? '保存' : '新增'} />
+      <DrawerFooter
+        onCancel={handleClose}
+        onSubmit={() => form.submit()}
+        submitText={editingItem ? '保存' : '新增'}
+      />
     </Drawer>
   );
 }

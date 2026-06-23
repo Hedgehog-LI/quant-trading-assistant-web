@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getAllSnapshots, upsertSnapshot, getLatestPriceBySymbol } from './portfolioLocalStorage';
+import { clearAll } from '../../../shared/api/localStorageClient';
 
 beforeEach(() => {
-  localStorage.clear();
+  clearAll();
 });
 
 describe('portfolioLocalStorage', () => {

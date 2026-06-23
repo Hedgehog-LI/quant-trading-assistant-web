@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { Typography, Button, Space, Input, DatePicker, Select, message } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { Typography, Button, Space, Input, DatePicker, Select, message, Spin, Alert, Empty, Tag } from 'antd';
+import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useTradeJournal, useTradeJournalFiltered } from '../features/journal/hooks/useTradeJournal';
 import { TradeJournalTable } from '../features/journal/components/TradeJournalTable';
 import { TradeJournalForm } from '../features/journal/components/TradeJournalForm';
 import type { FormValues as JournalFormValues } from '../features/journal/components/TradeJournalForm';
 import { REVIEW_STATUS_OPTIONS } from '../features/journal/model/options';
-import type { TradeJournal } from '../shared/types/domain';
+import type { EntityId, TradeJournal } from '../shared/types/domain';
 
 export function JournalPage() {
-  const { items, add, update } = useTradeJournal();
+  const { items, loading, error, isEmpty, apiMode, refresh, add, update, remove } = useTradeJournal();
   const { filtered, dateFilter, setDateFilter, symbolFilter, setSymbolFilter, reviewStatusFilter, setReviewStatusFilter } = useTradeJournalFiltered(items);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -26,29 +26,43 @@ export function JournalPage() {
     setFormOpen(true);
   };
 
-  const handleSubmit = (values: JournalFormValues) => {
+  const handleRemove = async (id: EntityId) => {
     try {
-      if (editingItem) {
-        update(editingItem.id, values as Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>>);
-        message.success('更新成功');
-      } else {
-        add(values as Omit<TradeJournal, 'id' | 'amount' | 'reviewStatus' | 'createdAt' | 'updatedAt'>);
-        message.success('新增成功');
-      }
-      setFormOpen(false);
-      setEditingItem(null);
+      await remove(id);
+      message.success('已删除');
     } catch (e) {
-      message.error(e instanceof Error ? e.message : '操作失败');
+      message.error(e instanceof Error ? e.message : '删除失败');
     }
+  };
+
+  // 表单提交：失败抛回 TradeJournalForm 由其 message.error 提示；成功后关闭 Drawer。
+  const handleSubmit = async (values: JournalFormValues) => {
+    if (editingItem) {
+      await update(editingItem.id, values as Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>>);
+      message.success('更新成功');
+    } else {
+      await add(values as Omit<TradeJournal, 'id' | 'amount' | 'reviewStatus' | 'createdAt' | 'updatedAt'>);
+      message.success('新增成功');
+    }
+    setFormOpen(false);
+    setEditingItem(null);
   };
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>交易记录</Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-          记录交易
-        </Button>
+        <Space align="center">
+          <Typography.Title level={4} style={{ margin: 0 }}>交易记录</Typography.Title>
+          <Tag color={apiMode === 'remote' ? 'blue' : 'default'}>
+            {apiMode === 'remote' ? '后端模式' : '本地模式'}
+          </Tag>
+        </Space>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>刷新</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            记录交易
+          </Button>
+        </Space>
       </div>
 
       <Space style={{ marginBottom: 16 }} wrap>
@@ -75,7 +89,26 @@ export function JournalPage() {
         />
       </Space>
 
-      <TradeJournalTable items={filtered} onEdit={handleEdit} />
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          message="加载失败"
+          description={error}
+          action={<Button size="small" onClick={() => void refresh()}>重试</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <Spin tip="加载中..." />
+        </div>
+      ) : isEmpty ? (
+        <Empty description="暂无交易记录" style={{ padding: 48 }} />
+      ) : (
+        <TradeJournalTable items={filtered} onEdit={handleEdit} onRemove={handleRemove} />
+      )}
 
       <TradeJournalForm
         open={formOpen}
