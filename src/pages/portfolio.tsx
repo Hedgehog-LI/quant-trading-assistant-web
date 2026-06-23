@@ -91,9 +91,8 @@ export function PortfolioPage() {
           message="数据来源：后端 API"
           description={
             <ul style={{ margin: 0, paddingLeft: 18 }}>
-              <li>账本数据来源于后端 API，按后端已有的交易流水实时计算（FIFO）。</li>
-              <li>交易记录页当前仍保存在本地，不会自动写入后端。</li>
-              <li>在交易记录页新增的本地流水，不会自动出现在 remote 账本中（remote 写入后续再做）。</li>
+              <li>账本数据来源于后端 API，按后端交易流水实时计算（FIFO）。</li>
+              <li>后端模式下，交易记录、交易账本等核心业务数据均通过 REST API 读写后端数据库；本页与「交易记录」页共用同一份后端数据。</li>
               <li>当前价为手工维护，不连接券商、不接实时行情，不构成投资建议。</li>
             </ul>
           }

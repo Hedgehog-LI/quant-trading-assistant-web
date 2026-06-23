@@ -65,22 +65,59 @@ npm run build        # 生产构建
 - 清空浏览器缓存会丢失数据
 - localStorage 容量有限（通常 5~10MB），不建议存储海量历史数据
 
-## 后端联调
+## 数据模式与后端联调
 
-当前业务默认使用 localStorage。后端 API 就绪后：
+数据模式由「设置」页控制（每次请求现读设置，切换无需刷新页面）：
 
-1. 在设置页切换数据模式为「后端模式」
-2. 后端地址默认**留空**，走同源 `/api/v1`（由开发期 vite proxy 或生产 nginx 反代转发）；本地开发需要直连后端时才填写 `http://localhost:8080`
-3. 后端地址在**每次请求时**读取并拼接为 `${apiBaseUrl}/api/v1`，切换后无需刷新页面
+- **本地模式（mock）**：数据保存在浏览器 localStorage，不依赖后端，适合本地开发 / 离线兜底。
+- **后端模式（remote）**：核心业务数据通过 REST API 写入后端数据库。后端地址默认**留空**走同源 `/api/v1`（开发期 vite proxy、生产 Nginx 反代转发）；本地需要直连后端时才填 `http://localhost:8080`，拼接为 `${apiBaseUrl}/api/v1`。
+- **默认模式由环境变量 `VITE_DEFAULT_API_MODE` 控制**：开发默认 `mock`（见 `.env`），生产构建默认 `remote`（见 `.env.production`），默认值清晰可控。用户在设置页手动切换后，选择保存在浏览器 localStorage 并优先生效。
 
-**当前接入范围**：
+**后端模式已接入范围**（新增 / 编辑 / 删除 / 查询均走后端，核心数据落库）：
 
-- 仅「交易账本」（`/portfolio`：持仓、已结算交易、盈亏、手工当前价）已接入后端 REST API。
-- 交易记录、自选股、交易计划、盘后复盘等页面仍以浏览器 localStorage 为主。
-- 后端模式下交易账本读取后端数据；交易记录页的本地新增**不会自动写入后端**（remote 写入后续再做）。
-- 本系统不连接券商，不自动同步真实交易，当前价与交易流水均为手工维护，所有盈亏仅用于复盘，不构成投资建议。
+| 模块 | 后端路径 |
+|------|----------|
+| 交易账本（持仓、已结算交易、盈亏、手工当前价） | `/api/v1/portfolio/*` |
+| 自选股 | `/api/v1/watchlist` |
+| 交易计划 | `/api/v1/trade-plans` |
+| 交易记录 | `/api/v1/trade-journals` |
+| 盘后复盘 | `/api/v1/reviews` |
+
+「今日工作台」会在后端模式下并发拉取上述数据聚合展示；「风控计算器」为纯前端计算，不涉及后端持久化。
+
+> 说明：本地模式录入的数据**不会自动同步**到后端，反之亦然——两套数据源相互独立。本系统不连接券商，不自动同步真实交易，当前价与交易流水均为手工维护，所有盈亏仅用于复盘，不构成投资建议。
 
 后端项目：`/Users/joker/code/quant-trading-assistant`
+
+## 运行架构与排障
+
+本系统有两套运行形态，请勿混淆：
+
+### 本机开发（当前默认）
+
+| 组件 | 地址 | 说明 |
+|------|------|------|
+| 前端 Vite dev | http://localhost:5173 | `npm run dev`；开发期 `/api` 经 Vite proxy 转发到 8080 |
+| 后端 Spring Boot | http://localhost:8080 | 本机直接运行（profile=local），连 Docker 内 MySQL |
+| MySQL | 127.0.0.1:3306 | Docker 容器 `qta-mysql`，仅绑定本机回环，不暴露公网 |
+
+> Vite 默认绑定 IPv6 `[::1]:5173`，请用 `http://localhost:5173` 访问（`127.0.0.1` 直连可能失败）。
+
+### 生产部署（服务器）
+
+1. 后端：`docker compose up -d --build`（容器 `qta-server`，端口 8080）+ MySQL 容器 `qta-mysql`。
+2. 前端：`npm run build` 产出 `dist/`，交由 Nginx 托管；Nginx 将 `/api/` 反代到后端 8080（**反代目标勿重复拼接 `/api/v1`**）。
+3. 前端「设置」页切换为后端模式，地址留空即走同源 `/api/v1`，由 Nginx 转发。
+
+### 排障命令
+
+```bash
+curl http://localhost:8080/actuator/health           # 后端健康检查
+curl http://localhost:8080/api/v1/portfolio/summary  # 直连后端业务接口
+curl http://localhost:5173/                           # 前端首页（本机 dev）
+curl http://localhost:5173/api/v1/portfolio/summary  # 经 Vite proxy 验证联调
+npm run typecheck && npm run lint && npm run test && npm run build
+```
 
 ## 项目结构
 

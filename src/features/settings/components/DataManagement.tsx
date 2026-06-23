@@ -73,7 +73,11 @@ export function DataManagement({ settings, onSaveSettings, onExport, onImport, o
 
       <Card title="数据模式" size="small" style={{ marginBottom: 16 }}>
         <Typography.Paragraph type="secondary">
-          当前业务数据默认保存在浏览器 localStorage 中。切换到「后端模式」后，相关数据将通过 REST API 与后端交互。
+          <strong>本地模式</strong>：数据保存在浏览器 localStorage。
+          <br />
+          <strong>后端模式</strong>：核心业务数据（交易账本、自选股、交易计划、交易记录、盘后复盘）通过 REST API 写入后端数据库。
+          <br />
+          「数据模式」「后端地址」等设置本身，以及 JSON 导入 / 导出 / 清空，始终保存在浏览器本地。
         </Typography.Paragraph>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <div>
@@ -106,7 +110,7 @@ export function DataManagement({ settings, onSaveSettings, onExport, onImport, o
               message="后端模式当前接入范围"
               description={
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  <li>「交易账本」「自选股」「交易计划」「交易记录」「盘后复盘」均已接入后端 API：新增、编辑、查询均走后端，切换回本地模式仍使用 localStorage。</li>
+                  <li>「交易账本」「自选股」「交易计划」「交易记录」「盘后复盘」均已接入后端 API：新增、编辑、删除、查询均走后端，核心数据落库；切换回本地模式仍使用 localStorage。</li>
                   <li>「今日工作台」会从后端并发拉取上述数据并聚合展示。</li>
                   <li>风控计算器为纯前端计算，不涉及后端持久化。</li>
                   <li>后端模式下请确保后端服务可达且数据库已有对应数据；本地模式录入的数据不会自动同步到后端。</li>
