@@ -8,6 +8,7 @@ import {
   AccountBookOutlined,
   FormOutlined,
   SettingOutlined,
+  ProjectOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAppStore } from '../shared/stores/app-store';
@@ -23,6 +24,7 @@ const menuItems = [
   { key: '/portfolio', icon: <AccountBookOutlined />, label: '交易账本' },
   { key: '/review', icon: <FormOutlined />, label: '盘后复盘' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
+  { key: '/build-status', icon: <ProjectOutlined />, label: '建设看板' },
 ];
 
 /**
@@ -62,7 +64,7 @@ export function AppLayout() {
         <Content style={{ margin: 24 }}>
           <Alert
             type="info"
-            message="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"
+            title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"
             style={{ marginBottom: 16 }}
             showIcon
             closable

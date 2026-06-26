@@ -11,6 +11,7 @@ const JournalPage = lazy(() => import('../pages/journal').then((m) => ({ default
 const PortfolioPage = lazy(() => import('../pages/portfolio').then((m) => ({ default: m.PortfolioPage })));
 const ReviewPage = lazy(() => import('../pages/review').then((m) => ({ default: m.ReviewPage })));
 const SettingsPage = lazy(() => import('../pages/settings').then((m) => ({ default: m.SettingsPage })));
+const BuildStatusPage = lazy(() => import('../pages/build-status').then((m) => ({ default: m.BuildStatusPage })));
 const NotFoundPage = lazy(() => import('../pages/not-found').then((m) => ({ default: m.NotFoundPage })));
 
 function PageLoading() {
@@ -37,6 +38,7 @@ export function AppRouter() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/build-status" element={<BuildStatusPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
