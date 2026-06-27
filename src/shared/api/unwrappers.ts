@@ -23,3 +23,13 @@ export async function unwrapVoid(p: Promise<{ data: ApiResponse<unknown> }>): Pr
     throw new Error(body.message ?? '接口返回失败');
   }
 }
+
+/** 解包允许 data=null 的查询接口。 */
+export async function unwrapNullable<T>(p: Promise<{ data: ApiResponse<T> }>): Promise<T | null> {
+  const res = await p;
+  const body = res.data;
+  if (!body.success) {
+    throw new Error(body.message ?? '接口返回失败');
+  }
+  return body.data ?? null;
+}

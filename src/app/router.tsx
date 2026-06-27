@@ -9,6 +9,7 @@ const TradePlanPage = lazy(() => import('../pages/trade-plan').then((m) => ({ de
 const RiskPage = lazy(() => import('../pages/risk').then((m) => ({ default: m.RiskPage })));
 const JournalPage = lazy(() => import('../pages/journal').then((m) => ({ default: m.JournalPage })));
 const PortfolioPage = lazy(() => import('../pages/portfolio').then((m) => ({ default: m.PortfolioPage })));
+const PositionSnapshotPage = lazy(() => import('../pages/position-snapshot').then((m) => ({ default: m.PositionSnapshotPage })));
 const ReviewPage = lazy(() => import('../pages/review').then((m) => ({ default: m.ReviewPage })));
 const SettingsPage = lazy(() => import('../pages/settings').then((m) => ({ default: m.SettingsPage })));
 const BuildStatusPage = lazy(() => import('../pages/build-status').then((m) => ({ default: m.BuildStatusPage })));
@@ -36,6 +37,7 @@ export function AppRouter() {
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/journal" element={<JournalPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
+          <Route path="/position-snapshots" element={<PositionSnapshotPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/build-status" element={<BuildStatusPage />} />

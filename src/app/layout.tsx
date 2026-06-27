@@ -1,4 +1,4 @@
-import { Layout, Menu, Typography, Alert } from 'antd';
+import { Layout, Menu, Typography, Alert, Grid } from 'antd';
 import {
   DashboardOutlined,
   StarOutlined,
@@ -6,6 +6,7 @@ import {
   CalculatorOutlined,
   BookOutlined,
   AccountBookOutlined,
+  PieChartOutlined,
   FormOutlined,
   SettingOutlined,
   ProjectOutlined,
@@ -22,6 +23,7 @@ const menuItems = [
   { key: '/risk', icon: <CalculatorOutlined />, label: '风控计算' },
   { key: '/journal', icon: <BookOutlined />, label: '交易记录' },
   { key: '/portfolio', icon: <AccountBookOutlined />, label: '交易账本' },
+  { key: '/position-snapshots', icon: <PieChartOutlined />, label: '持仓快照' },
   { key: '/review', icon: <FormOutlined />, label: '盘后复盘' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
   { key: '/build-status', icon: <ProjectOutlined />, label: '建设看板' },
@@ -35,12 +37,21 @@ export function AppLayout() {
   const location = useLocation();
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggle = useAppStore((s) => s.toggleSidebar);
+  const screens = Grid.useBreakpoint();
+  const isMobile = screens.md === false;
+  const effectiveCollapsed = isMobile || collapsed;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={toggle}>
+      <Sider
+        collapsible={!isMobile}
+        collapsed={effectiveCollapsed}
+        collapsedWidth={isMobile ? 64 : 80}
+        trigger={isMobile ? null : undefined}
+        onCollapse={() => { if (!isMobile) toggle(); }}
+      >
         <div style={{ height: 32, margin: 16, textAlign: 'center' }}>
-          <Typography.Text strong style={{ color: '#fff', fontSize: collapsed ? 14 : 16 }}>
+          <Typography.Text strong style={{ color: '#fff', fontSize: effectiveCollapsed ? 14 : 16 }}>
             QTA
           </Typography.Text>
         </div>
@@ -53,15 +64,17 @@ export function AppLayout() {
         />
       </Sider>
       <Layout>
-        <Header style={{ padding: '0 24px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
+        <Header style={{ padding: isMobile ? '0 12px' : '0 24px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography.Title level={4} style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
             量化交易辅助系统
           </Typography.Title>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            辅助记录 · 不自动交易
-          </Typography.Text>
+          {!isMobile && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              辅助记录 · 不自动交易
+            </Typography.Text>
+          )}
         </Header>
-        <Content style={{ margin: 24 }}>
+        <Content style={{ margin: isMobile ? 12 : 24 }}>
           <Alert
             type="info"
             title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"

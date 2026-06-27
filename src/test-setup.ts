@@ -31,9 +31,22 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
+// jsdom 没有 ResizeObserver，Ant Design 的 Table/Drawer 布局依赖它。
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+Object.defineProperty(globalThis, 'ResizeObserver', {
+  writable: true,
+  value: ResizeObserverMock,
+});
+
 // jsdom 没有 getComputedStyle 的完整实现
 const originalGetComputedStyle = window.getComputedStyle;
 window.getComputedStyle = (elt: Element, pseudoElt?: string | null) => {
+  if (pseudoElt) return {} as CSSStyleDeclaration;
   try {
     return originalGetComputedStyle(elt, pseudoElt);
   } catch {

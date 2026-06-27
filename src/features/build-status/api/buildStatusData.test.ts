@@ -3,15 +3,15 @@ import { buildCapabilities, buildStatusTree, buildSummaryCards } from './buildSt
 import { filterBuildTree, flattenBuildNodes } from '../hooks/useBuildStatus';
 
 describe('buildStatusData', () => {
-  it('keeps position snapshot as current P0 todo focus', () => {
+  it('marks position snapshot as an accepted P0 capability', () => {
     const nodes = flattenBuildNodes(buildStatusTree);
     const positionSnapshot = nodes.find((node) => node.id === 'position-snapshot');
 
     expect(positionSnapshot).toBeDefined();
     expect(positionSnapshot?.priority).toBe('P0');
-    expect(positionSnapshot?.status).toBe('TODO');
-    expect(positionSnapshot?.maturity).toBe('M1');
-    expect(positionSnapshot?.nextActions).toContain('新增 DB 表');
+    expect(positionSnapshot?.status).toBe('DONE');
+    expect(positionSnapshot?.maturity).toBe('M4');
+    expect(positionSnapshot?.progress).toBe(100);
   });
 
   it('covers all planned construction categories', () => {

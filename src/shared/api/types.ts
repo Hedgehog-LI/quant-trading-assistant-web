@@ -6,6 +6,7 @@ export interface ApiResponse<T> {
   success: boolean;
   code: string;
   message: string | null;
-  data: T | null;
+  /** 后端使用 NON_NULL 序列化，空数据时字段可能省略。 */
+  data?: T | null;
   timestamp: string;
 }

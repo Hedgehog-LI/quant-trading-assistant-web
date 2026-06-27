@@ -53,6 +53,7 @@ npm run build        # 生产构建
 | 风控计算器 | `/risk` | 输入资金和价格，计算建议仓位和风险等级 |
 | 交易记录 | `/journal` | 手工记录交易，打情绪/错误标签 |
 | 交易账本 | `/portfolio` | 持仓、已结算交易、盈亏与胜率（FIFO），手工维护当前价 |
+| 持仓快照 | `/position-snapshots` | 手工盘点实际持仓，保存草稿、确认、作废和查询历史快照 |
 | 盘后复盘 | `/review` | 每日总复盘和个股复盘，关联交易记录 |
 | 设置 | `/settings` | 数据模式切换、JSON 导出/导入/清空 |
 
@@ -78,6 +79,7 @@ npm run build        # 生产构建
 | 模块 | 后端路径 |
 |------|----------|
 | 交易账本（持仓、已结算交易、盈亏、手工当前价） | `/api/v1/portfolio/*` |
+| 持仓快照（草稿、确认、作废、历史与详情） | `/api/v1/position-snapshots/*` |
 | 自选股 | `/api/v1/watchlist` |
 | 交易计划 | `/api/v1/trade-plans` |
 | 交易记录 | `/api/v1/trade-journals` |
@@ -130,6 +132,8 @@ src/
 │   ├── tradeplan/
 │   ├── risk/
 │   ├── journal/
+│   ├── portfolio/
+│   ├── position-snapshot/
 │   ├── review/
 │   ├── dashboard/
 │   └── settings/
