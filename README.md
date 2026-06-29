@@ -105,6 +105,16 @@ npm run build        # 生产构建
 
 > Vite 默认绑定 IPv6 `[::1]:5173`，请用 `http://localhost:5173` 访问（`127.0.0.1` 直连可能失败）。
 
+Vite 代理目标由 `VITE_DEV_PROXY_TARGET` 控制，默认值是 `http://localhost:8080`。如果通过 SSH
+把服务器后端 `18081` 端口映射到了 Mac 本机，请创建不提交 Git 的 `.env.local`：
+
+```bash
+VITE_DEV_PROXY_TARGET=http://localhost:18081
+```
+
+修改后需要重新启动 `npm run dev`。不要直接把 `vite.config.ts` 的默认端口改成服务器端口，
+否则会破坏本机 Spring Boot 运行在 8080 时的标准开发流程。
+
 ### 生产部署（服务器）
 
 1. 后端：`docker compose up -d --build`（容器 `qta-server`，端口 8080）+ MySQL 容器 `qta-mysql`。
