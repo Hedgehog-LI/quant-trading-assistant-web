@@ -16,7 +16,6 @@ import {
   deleteTradeJournal,
 } from '../api/tradeJournalApi';
 import { getSettings } from '../../settings/api/settingsApi';
-import { today } from '../../../shared/utils/date';
 import type { EntityId, TradeJournal } from '../../../shared/types/domain';
 
 export type TradeJournalInput = Omit<
@@ -117,7 +116,7 @@ export function useTradeJournal(): UseTradeJournalResult {
 }
 
 export function useTradeJournalFiltered(items: TradeJournal[]) {
-  const [dateFilter, setDateFilter] = useState<string>(today());
+  const [dateFilter, setDateFilter] = useState<string>('');
   const [symbolFilter, setSymbolFilter] = useState('');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string | undefined>(undefined);
 
@@ -138,5 +137,23 @@ export function useTradeJournalFiltered(items: TradeJournal[]) {
     return result;
   }, [items, dateFilter, symbolFilter, reviewStatusFilter]);
 
-  return { filtered, dateFilter, setDateFilter, symbolFilter, setSymbolFilter, reviewStatusFilter, setReviewStatusFilter };
+  const hasActiveFilters = dateFilter !== '' || symbolFilter.trim() !== '' || reviewStatusFilter !== undefined;
+
+  const resetFilters = useCallback(() => {
+    setDateFilter('');
+    setSymbolFilter('');
+    setReviewStatusFilter(undefined);
+  }, []);
+
+  return {
+    filtered,
+    dateFilter,
+    setDateFilter,
+    symbolFilter,
+    setSymbolFilter,
+    reviewStatusFilter,
+    setReviewStatusFilter,
+    hasActiveFilters,
+    resetFilters,
+  };
 }

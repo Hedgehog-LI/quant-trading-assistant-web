@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Typography, Button, Space, Input, DatePicker, Select, message, Spin, Alert, Empty, Tag } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, ClearOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useTradeJournal, useTradeJournalFiltered } from '../features/journal/hooks/useTradeJournal';
 import { TradeJournalTable } from '../features/journal/components/TradeJournalTable';
@@ -11,7 +11,17 @@ import type { EntityId, TradeJournal } from '../shared/types/domain';
 
 export function JournalPage() {
   const { items, loading, error, isEmpty, apiMode, refresh, add, update, remove } = useTradeJournal();
-  const { filtered, dateFilter, setDateFilter, symbolFilter, setSymbolFilter, reviewStatusFilter, setReviewStatusFilter } = useTradeJournalFiltered(items);
+  const {
+    filtered,
+    dateFilter,
+    setDateFilter,
+    symbolFilter,
+    setSymbolFilter,
+    reviewStatusFilter,
+    setReviewStatusFilter,
+    hasActiveFilters,
+    resetFilters,
+  } = useTradeJournalFiltered(items);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TradeJournal | null>(null);
@@ -87,6 +97,11 @@ export function JournalPage() {
           onChange={setReviewStatusFilter}
           options={REVIEW_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
         />
+        {hasActiveFilters && (
+          <Button icon={<ClearOutlined />} onClick={resetFilters}>
+            清空筛选
+          </Button>
+        )}
       </Space>
 
       {error && (
@@ -106,6 +121,8 @@ export function JournalPage() {
         </div>
       ) : isEmpty ? (
         <Empty description="暂无交易记录" style={{ padding: 48 }} />
+      ) : filtered.length === 0 ? (
+        <Empty description="当前筛选条件下暂无交易记录" style={{ padding: 48 }} />
       ) : (
         <TradeJournalTable items={filtered} onEdit={handleEdit} onRemove={handleRemove} />
       )}
