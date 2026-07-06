@@ -109,7 +109,7 @@ export function ReviewForm({ open, editingItem, onClose, onSubmit, defaultDate }
       title={editingItem ? '编辑复盘' : '新增复盘'}
       open={open}
       onClose={handleClose}
-      width={520}
+      size={520}
       destroyOnClose
     >
       <Form<FormValues> form={form} layout="vertical" onFinish={handleFinish} autoComplete="off">

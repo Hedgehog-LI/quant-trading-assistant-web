@@ -10,12 +10,13 @@ import {
   Typography,
   message,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usePositionSnapshots } from '../features/position-snapshot/hooks/usePositionSnapshots';
 import { PositionSnapshotLatest } from '../features/position-snapshot/components/PositionSnapshotLatest';
 import { PositionSnapshotHistoryTable } from '../features/position-snapshot/components/PositionSnapshotHistoryTable';
 import { PositionSnapshotDetailDrawer } from '../features/position-snapshot/components/PositionSnapshotDetailDrawer';
+import { PositionSnapshotInspectionDrawer } from '../features/position-snapshot/components/PositionSnapshotInspectionDrawer';
 import {
   PositionSnapshotFormDrawer,
   type PositionSnapshotFormValues,
@@ -50,6 +51,7 @@ export function PositionSnapshotPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<PositionSnapshotDetail | null>(null);
+  const [inspectOpen, setInspectOpen] = useState(false);
 
   const openCreate = () => {
     setEditingSnapshot(null);
@@ -135,7 +137,10 @@ export function PositionSnapshotPage() {
             </Tag>
           </Space>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建快照</Button>
+        <Space>
+          <Button icon={<SwapOutlined />} onClick={() => setInspectOpen(true)}>对比与对账</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建快照</Button>
+        </Space>
       </div>
 
       <Alert
@@ -225,6 +230,11 @@ export function PositionSnapshotPage() {
         onEdit={(snapshot) => { setEditingSnapshot(snapshot); setDetailOpen(false); setFormOpen(true); }}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
+      />
+      <PositionSnapshotInspectionDrawer
+        open={inspectOpen}
+        confirmedSnapshots={items.filter((i) => i.snapshotStatus === 'CONFIRMED')}
+        onClose={() => setInspectOpen(false)}
       />
     </div>
   );

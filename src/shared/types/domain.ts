@@ -22,6 +22,21 @@ export type MistakeTag =
   | 'NO_PLAN'
   | 'BROKE_RULE';
 
+/** 持仓快照对比明细变化类型（v0.1.1） */
+export type SnapshotChangeType = 'NEW' | 'INCREASED' | 'REDUCED' | 'CLOSED' | 'UNCHANGED';
+/** 持仓快照与账本对账状态（v0.1.1） */
+export type ReconciliationStatus = 'MATCHED' | 'QUANTITY_MISMATCH' | 'SNAPSHOT_ONLY' | 'LEDGER_ONLY';
+/** 工作台待办码（v0.1.1） */
+export type DashboardTodoCode =
+  | 'PENDING_REVIEW'
+  | 'UNLINKED_TRADE_PLAN'
+  | 'TRADE_AGAINST_PLAN'
+  | 'MISSING_STOP_LOSS'
+  | 'STALE_POSITION_SNAPSHOT'
+  | 'POSITION_RECONCILIATION_MISMATCH';
+/** 工作台待办级别（v0.1.1） */
+export type DashboardTodoLevel = 'INFO' | 'WARNING' | 'RISK';
+
 /**
  * 实体 ID 类型。
  * - mock 模式：前端 generateId 生成的 UUID 字符串。
@@ -91,6 +106,10 @@ export interface TradeJournal {
   totalFee?: number;
   positionRatio?: number;
   planId?: EntityId;
+  /** 关联计划的计划日期（remote 模式由后端返回，mock 模式可空） */
+  planDate?: string;
+  /** 关联计划的状态（remote 模式由后端返回） */
+  planStatus?: PlanStatus;
   reason?: string;
   planStopLoss?: number;
   planTakeProfit?: number;
@@ -147,6 +166,15 @@ export interface RiskCalculationResult {
 
 // ============ Dashboard 聚合 ============
 
+export interface DashboardTodo {
+  code: DashboardTodoCode;
+  level: DashboardTodoLevel;
+  title: string;
+  description: string;
+  count: number;
+  targetPath: string;
+}
+
 export interface DashboardSummary {
   date: string;
   enabledWatchlistCount: number;
@@ -158,6 +186,58 @@ export interface DashboardSummary {
   highAttentionStocks: WatchlistItem[];
   todayPlans: TradePlan[];
   pendingReviewJournals: TradeJournal[];
+  /** 结构化待办列表（v0.1.1 新增；remote 由后端聚合返回，mock 由纯函数计算） */
+  todos?: DashboardTodo[];
+}
+
+// ============ 持仓快照对比与对账（v0.1.1） ============
+
+export interface PositionSnapshotComparisonItem {
+  symbol: string;
+  name?: string;
+  changeType: SnapshotChangeType;
+  baseQuantity?: number;
+  targetQuantity?: number;
+  quantityDelta: number;
+  baseCostPrice?: number;
+  targetCostPrice?: number;
+  marketValueDelta: number;
+  unrealizedPnlDelta: number;
+}
+
+export interface PositionSnapshotComparison {
+  baseSnapshotId: EntityId;
+  targetSnapshotId: EntityId;
+  baseSnapshotTime: string;
+  targetSnapshotTime: string;
+  baseStatus: string;
+  targetStatus: string;
+  totalCostDelta: number;
+  totalMarketValueDelta: number;
+  totalUnrealizedPnlDelta: number;
+  positionCountDelta: number;
+  items: PositionSnapshotComparisonItem[];
+}
+
+export interface PositionSnapshotReconciliationItem {
+  symbol: string;
+  name?: string;
+  status: ReconciliationStatus;
+  snapshotQuantity: number;
+  ledgerQuantity: number;
+  quantityDifference: number;
+  snapshotCostPrice?: number;
+  ledgerAverageCost?: number;
+}
+
+export interface PositionSnapshotReconciliation {
+  snapshotId: EntityId;
+  snapshotTime: string;
+  matchedCount: number;
+  mismatchCount: number;
+  hasMismatch: boolean;
+  warnings: string[];
+  items: PositionSnapshotReconciliationItem[];
 }
 
 // ============ Settings ============

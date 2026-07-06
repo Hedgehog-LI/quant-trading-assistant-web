@@ -1,4 +1,4 @@
-import { Row, Col, Statistic, Card, Tag, List, Alert, Typography } from 'antd';
+import { Row, Col, Statistic, Card, Tag, Alert, Typography } from 'antd';
 import {
   StarOutlined,
   FileTextOutlined,
@@ -13,12 +13,22 @@ interface Props {
   summary: DashboardSummary;
 }
 
+const UL_STYLE: React.CSSProperties = {
+  listStyle: 'none',
+  padding: 0,
+  margin: 0,
+};
+const LI_STYLE: React.CSSProperties = {
+  padding: '6px 0',
+  borderBottom: '1px solid #f0f0f0',
+};
+
 export function DashboardStats({ summary }: Props) {
   return (
     <div>
       <Alert
         type="info"
-        message="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商。"
+        title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商。"
         style={{ marginBottom: 16 }}
         showIcon
       />
@@ -49,44 +59,42 @@ export function DashboardStats({ summary }: Props) {
       {summary.riskWarnings.length > 0 && (
         <Alert
           type="warning"
-          message="风险提醒"
+          title="风险提醒"
           style={{ marginTop: 16 }}
           icon={<WarningOutlined />}
           showIcon
           description={
-            <List
-              size="small"
-              dataSource={summary.riskWarnings}
-              renderItem={(item) => <List.Item>{item}</List.Item>}
-            />
+            <ul style={{ listStyle: 'disc', paddingLeft: 20, margin: 0 }}>
+              {summary.riskWarnings.map((w, idx) => (
+                <li key={idx}>{w}</li>
+              ))}
+            </ul>
           }
         />
       )}
 
       {summary.highAttentionStocks.length > 0 && (
         <Card title="高关注自选股" size="small" style={{ marginTop: 16 }}>
-          <List
-            size="small"
-            dataSource={summary.highAttentionStocks.slice(0, 5)}
-            renderItem={(item) => (
-              <List.Item>
+          <ul style={UL_STYLE}>
+            {summary.highAttentionStocks.slice(0, 5).map((item) => (
+              <li key={String(item.id)} style={LI_STYLE}>
                 <strong>{item.symbol}</strong> {item.name}
                 {item.stopLossPrice ? (
-                  <Tag color="red" style={{ marginLeft: 8 }}>止损 {formatPrice(item.stopLossPrice)}</Tag>
+                  <Tag color="red" style={{ marginLeft: 8 }}>
+                    止损 {formatPrice(item.stopLossPrice)}
+                  </Tag>
                 ) : null}
-              </List.Item>
-            )}
-          />
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 
       {summary.todayPlans.length > 0 && (
         <Card title="今日计划" size="small" style={{ marginTop: 16 }}>
-          <List
-            size="small"
-            dataSource={summary.todayPlans.slice(0, 5)}
-            renderItem={(plan) => (
-              <List.Item>
+          <ul style={UL_STYLE}>
+            {summary.todayPlans.slice(0, 5).map((plan) => (
+              <li key={String(plan.id)} style={LI_STYLE}>
                 <strong>{plan.symbol}</strong> {plan.name}
                 <Tag color={plan.allowedToTrade ? 'blue' : 'default'} style={{ marginLeft: 8 }}>
                   {plan.allowedToTrade ? '允许交易' : '暂不交易'}
@@ -96,23 +104,21 @@ export function DashboardStats({ summary }: Props) {
                     {plan.buyCondition}
                   </Typography.Text>
                 )}
-              </List.Item>
-            )}
-          />
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 
       {summary.pendingReviewJournals.length > 0 && (
         <Card title="待复盘交易" size="small" style={{ marginTop: 16 }}>
-          <List
-            size="small"
-            dataSource={summary.pendingReviewJournals.slice(0, 5)}
-            renderItem={(j) => (
-              <List.Item>
+          <ul style={UL_STYLE}>
+            {summary.pendingReviewJournals.slice(0, 5).map((j) => (
+              <li key={String(j.id)} style={LI_STYLE}>
                 {j.tradeDate} <strong>{j.symbol}</strong> {j.side === 'BUY' ? '买入' : '卖出'} {j.price} x {j.quantity}
-              </List.Item>
-            )}
-          />
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
     </div>

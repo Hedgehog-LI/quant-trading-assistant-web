@@ -74,7 +74,7 @@ export function TradePlanForm({ open, editingItem, onClose, onSubmit, submitting
       title={editingItem ? '编辑交易计划' : '新增交易计划'}
       open={open}
       onClose={handleClose}
-      width={500}
+      size={500}
       destroyOnClose
     >
       <Form<FormValues> form={form} layout="vertical" onFinish={handleFinish} autoComplete="off">
@@ -96,7 +96,7 @@ export function TradePlanForm({ open, editingItem, onClose, onSubmit, submitting
         {allowedToTrade && (
           <Alert
             type="warning"
-            message="允许交易时必须填写买入条件、止损价和计划仓位"
+            title="允许交易时必须填写买入条件、止损价和计划仓位"
             style={{ marginBottom: 16 }}
           />
         )}

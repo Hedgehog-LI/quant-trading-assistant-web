@@ -1,6 +1,7 @@
 import { Typography, Spin, Alert, Tag } from 'antd';
 import { useDashboard } from '../features/dashboard/hooks/useDashboard';
 import { DashboardStats } from '../features/dashboard/components/DashboardStats';
+import { DashboardTodos } from '../features/dashboard/components/DashboardTodos';
 import { QuickActions } from '../features/dashboard/components/QuickActions';
 
 export function DashboardPage() {
@@ -19,14 +20,19 @@ export function DashboardPage() {
         {error ? (
           <Alert
             type="error"
-            message="看板加载失败"
+            title="看板加载失败"
             description={error}
             action={<a onClick={() => void refresh()}>重试</a>}
           />
         ) : loading || !summary ? (
           <Spin />
         ) : (
-          <DashboardStats summary={summary} />
+          <>
+            <DashboardStats summary={summary} />
+            <div style={{ marginTop: 16 }}>
+              <DashboardTodos todos={summary.todos} loading={false} />
+            </div>
+          </>
         )}
       </div>
     </div>

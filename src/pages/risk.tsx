@@ -9,7 +9,7 @@ export function RiskPage() {
   return (
     <div>
       <Typography.Title level={4} style={{ marginBottom: 16 }}>风控计算器</Typography.Title>
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Space orientation="vertical" size={16} style={{ width: '100%' }}>
         <RiskCalculatorForm
           input={input}
           error={error}

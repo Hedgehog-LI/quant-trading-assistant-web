@@ -2,6 +2,7 @@ import { client } from '../../../shared/api/client';
 import type { ApiResponse } from '../../../shared/api/types';
 import { unwrap, unwrapNullable } from '../../../shared/api/unwrappers';
 import { getSettings } from '../../settings/api/settingsApi';
+import { getTradeJournals } from '../../journal/api/tradeJournalApi';
 import {
   cancelLocalPositionSnapshot,
   confirmLocalPositionSnapshot,
@@ -11,6 +12,12 @@ import {
   listLocalPositionSnapshots,
   updateLocalPositionSnapshot,
 } from './positionSnapshotLocalStorage';
+import { compareSnapshots } from './positionSnapshotComparison';
+import { reconcileSnapshot } from './positionSnapshotReconciliation';
+import type {
+  PositionSnapshotComparison,
+  PositionSnapshotReconciliation,
+} from '../../../shared/types/domain';
 import type {
   PositionSnapshotDetail,
   PositionSnapshotFilter,
@@ -27,6 +34,11 @@ export interface PositionSnapshotApi {
   update(id: string | number, input: PositionSnapshotUpdateInput): Promise<PositionSnapshotDetail>;
   confirm(id: string | number): Promise<PositionSnapshotDetail>;
   cancel(id: string | number): Promise<PositionSnapshotDetail>;
+  compare(
+    baseId: string | number,
+    targetId: string | number,
+  ): Promise<PositionSnapshotComparison>;
+  reconcile(id: string | number): Promise<PositionSnapshotReconciliation>;
 }
 
 const mockApi: PositionSnapshotApi = {
@@ -37,6 +49,16 @@ const mockApi: PositionSnapshotApi = {
   async update(id, input) { return updateLocalPositionSnapshot(id, input); },
   async confirm(id) { return confirmLocalPositionSnapshot(id); },
   async cancel(id) { return cancelLocalPositionSnapshot(id); },
+  async compare(baseId, targetId) {
+    const base = getLocalPositionSnapshotById(baseId);
+    const target = getLocalPositionSnapshotById(targetId);
+    return compareSnapshots(base, target);
+  },
+  async reconcile(id) {
+    const snapshot = getLocalPositionSnapshotById(id);
+    const journals = await getTradeJournals();
+    return reconcileSnapshot(snapshot, journals);
+  },
 };
 
 function compactFilter(filter?: PositionSnapshotFilter): Record<string, string | boolean> {
@@ -68,6 +90,18 @@ const remoteApi: PositionSnapshotApi = {
   async cancel(id) {
     return unwrap(client.patch<ApiResponse<PositionSnapshotDetail>>(`/position-snapshots/${id}/cancel`));
   },
+  async compare(baseId, targetId) {
+    return unwrap(
+      client.get<ApiResponse<PositionSnapshotComparison>>('/position-snapshots/comparison', {
+        params: { baseSnapshotId: baseId, targetSnapshotId: targetId },
+      }),
+    );
+  },
+  async reconcile(id) {
+    return unwrap(
+      client.get<ApiResponse<PositionSnapshotReconciliation>>(`/position-snapshots/${id}/reconciliation`),
+    );
+  },
 };
 
 function pick(): PositionSnapshotApi {
@@ -82,4 +116,6 @@ export const positionSnapshotApi: PositionSnapshotApi = {
   update: (id, input) => pick().update(id, input),
   confirm: (id) => pick().confirm(id),
   cancel: (id) => pick().cancel(id),
+  compare: (baseId, targetId) => pick().compare(baseId, targetId),
+  reconcile: (id) => pick().reconcile(id),
 };

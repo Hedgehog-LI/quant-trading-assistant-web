@@ -22,7 +22,9 @@ export type TradeJournalInput = Omit<
   TradeJournal,
   'id' | 'amount' | 'reviewStatus' | 'createdAt' | 'updatedAt'
 >;
-export type TradeJournalUpdate = Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>>;
+export type TradeJournalUpdate = Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>> & {
+  unlinkPlan?: boolean;
+};
 
 export interface UseTradeJournalResult {
   items: TradeJournal[];

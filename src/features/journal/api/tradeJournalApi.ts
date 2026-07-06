@@ -51,7 +51,9 @@ export interface TradeJournalApi {
   create(input: Omit<TradeJournal, 'id' | 'amount' | 'reviewStatus' | 'createdAt' | 'updatedAt'>): Promise<TradeJournal>;
   update(
     id: EntityId,
-    input: Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>>,
+    input: Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>> & {
+      unlinkPlan?: boolean;
+    },
   ): Promise<TradeJournal | null>;
   updateReviewStatus(id: EntityId, reviewStatus: ReviewStatus): Promise<TradeJournal | null>;
   batchUpdateReviewStatus(ids: EntityId[], reviewStatus: ReviewStatus): Promise<void>;
@@ -90,9 +92,14 @@ const mockApi: TradeJournalApi = {
     const items = readAll();
     const idx = items.findIndex((i) => i.id === id);
     if (idx === -1) return null;
-    const updated: TradeJournal = { ...items[idx], ...input, updatedAt: now() };
+    const { unlinkPlan, ...rest } = input;
+    const updated: TradeJournal = { ...items[idx], ...rest, updatedAt: now() };
+    if (unlinkPlan) {
+      // 显式解绑计划关联（与后端 unlinkPlan 三态语义一致）
+      updated.planId = undefined;
+    }
     // 如果 price 或 quantity 变了，重新计算 amount
-    if (input.price !== undefined || input.quantity !== undefined) {
+    if (rest.price !== undefined || rest.quantity !== undefined) {
       updated.amount = updated.price * updated.quantity;
     }
     items[idx] = updated;
@@ -153,7 +160,9 @@ const remoteApi: TradeJournalApi = {
     } catch {
       return null;
     }
-    const merged: TradeJournal = { ...existing, ...input };
+    // unlinkPlan 透传到 body（后端按三态处理），不写入 TradeJournal 实体
+    const { unlinkPlan, ...rest } = input;
+    const merged = { ...existing, ...rest, ...(unlinkPlan ? { unlinkPlan: true } : {}) };
     return unwrap(client.put<ApiResponse<TradeJournal>>(`/trade-journals/${id}`, merged));
   },
 
@@ -202,7 +211,9 @@ export async function addTradeJournal(
 
 export async function updateTradeJournal(
   id: EntityId,
-  input: Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>>,
+  input: Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>> & {
+    unlinkPlan?: boolean;
+  },
 ): Promise<TradeJournal | null> {
   return pick().update(id, input);
 }

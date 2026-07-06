@@ -150,4 +150,35 @@ describe('tradeJournalApi', () => {
     expect(updated?.commissionFee).toBe(10);
     expect(updated?.stampTax).toBe(2);
   });
+
+  it('update unlinkPlan=true 解除计划关联（planId 清空）', async () => {
+    const journal = await addTradeJournal({
+      tradeDate: '2026-06-08',
+      symbol: '300750',
+      side: 'BUY',
+      price: 100,
+      quantity: 100,
+      planId: 'plan-1',
+      emotionTags: [],
+      mistakeTags: [],
+    });
+    expect(journal.planId).toBe('plan-1');
+    const updated = await updateTradeJournal(journal.id, { unlinkPlan: true });
+    expect(updated?.planId).toBeUndefined();
+  });
+
+  it('update 不传 unlinkPlan 时保持原计划关联', async () => {
+    const journal = await addTradeJournal({
+      tradeDate: '2026-06-08',
+      symbol: '300750',
+      side: 'BUY',
+      price: 100,
+      quantity: 100,
+      planId: 'plan-1',
+      emotionTags: [],
+      mistakeTags: [],
+    });
+    const updated = await updateTradeJournal(journal.id, { price: 110 });
+    expect(updated?.planId).toBe('plan-1');
+  });
 });

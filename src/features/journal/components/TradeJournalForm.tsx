@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Drawer, Form, Input, Select, InputNumber, Alert, Tag, Row, Col, Typography, message } from 'antd';
-import type { TradeJournal } from '../../../shared/types/domain';
+import type { TradeJournal, TradePlan } from '../../../shared/types/domain';
 import { TRADE_SIDE_OPTIONS, EMOTION_TAG_OPTIONS, MISTAKE_TAG_OPTIONS } from '../model/options';
 import { DrawerFooter } from '../../../shared/components/DrawerFooter';
+import { getTradePlans } from '../../tradeplan/api/tradePlanApi';
+
+const PLAN_STATUS_LABEL: Record<string, string> = {
+  DRAFT: '草稿',
+  ACTIVE: '生效中',
+  DONE: '已完成',
+  CANCELLED: '已取消',
+};
 
 export interface FormValues {
   tradeDate: string;
@@ -39,7 +47,9 @@ interface Props {
 export function TradeJournalForm({ open, editingItem, onClose, onSubmit, defaultDate }: Props) {
   const [form] = Form.useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
+  const [plans, setPlans] = useState<TradePlan[]>([]);
   const side = Form.useWatch('side', form);
+  const tradeDate = Form.useWatch('tradeDate', form);
 
   useEffect(() => {
     if (open) {
@@ -75,6 +85,48 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
     }
   }, [open, editingItem, form, defaultDate]);
 
+  // 加载交易计划候选，用于关联选择器。
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getTradePlans()
+      .then((all) => {
+        if (!cancelled) setPlans(all);
+      })
+      .catch(() => {
+        if (!cancelled) setPlans([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // 候选过滤 CANCELLED，同日计划优先排序。
+  const candidatePlans = useMemo(() => {
+    return plans
+      .filter((p) => p.planStatus !== 'CANCELLED')
+      .sort((a, b) => {
+        const aSame = a.planDate === tradeDate ? 0 : 1;
+        const bSame = b.planDate === tradeDate ? 0 : 1;
+        if (aSame !== bSame) return aSame - bSame;
+        return b.planDate.localeCompare(a.planDate);
+      });
+  }, [plans, tradeDate]);
+
+  const handlePlanSelect = (planId?: string) => {
+    if (!planId) return;
+    const plan = plans.find((p) => String(p.id) === String(planId));
+    if (!plan) return;
+    // 选择计划后自动带入可复用字段（用户仍可修改）。
+    form.setFieldsValue({
+      symbol: plan.symbol,
+      name: plan.name ?? form.getFieldValue('name'),
+      planStopLoss: plan.stopLossPrice ?? form.getFieldValue('planStopLoss'),
+      planTakeProfit: plan.takeProfitPrice ?? form.getFieldValue('planTakeProfit'),
+      positionRatio: plan.plannedPositionRatio ?? form.getFieldValue('positionRatio'),
+    });
+  };
+
   const handleFinish = async (values: FormValues) => {
     setSubmitting(true);
     try {
@@ -97,12 +149,27 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
       title={editingItem ? '编辑交易记录' : '新增交易记录'}
       open={open}
       onClose={handleClose}
-      width={500}
+      size={500}
       destroyOnClose
     >
       <Form<FormValues> form={form} layout="vertical" onFinish={handleFinish} autoComplete="off">
         <Form.Item name="tradeDate" label="交易日期" rules={[{ required: true }]}>
           <Input type="date" />
+        </Form.Item>
+        <Form.Item
+          name="planId"
+          label="关联交易计划"
+          extra="选择后自动带入股票、止损、止盈和计划仓位；可继续修改。已取消计划不出现在候选。"
+        >
+          <Select
+            allowClear
+            placeholder="不关联计划可直接保存"
+            onChange={handlePlanSelect}
+            options={candidatePlans.map((p) => ({
+              value: String(p.id),
+              label: `[${p.planDate}] ${p.symbol}${p.name ? ' ' + p.name : ''} · ${PLAN_STATUS_LABEL[p.planStatus] ?? p.planStatus}`,
+            }))}
+          />
         </Form.Item>
         <Form.Item name="symbol" label="股票代码" rules={[{ required: true, message: '请输入股票代码' }]}>
           <Input placeholder="如 300750" maxLength={32} />
@@ -153,7 +220,7 @@ export function TradeJournalForm({ open, editingItem, onClose, onSubmit, default
           <InputNumber style={{ width: '100%' }} min={0} precision={4} />
         </Form.Item>
         {side === 'BUY' && !form.getFieldValue('planStopLoss') && (
-          <Alert type="warning" message="建议为买入操作设置止损价" style={{ marginBottom: 16 }} />
+          <Alert type="warning" title="建议为买入操作设置止损价" style={{ marginBottom: 16 }} />
         )}
         <Form.Item name="planTakeProfit" label="计划止盈">
           <InputNumber style={{ width: '100%' }} min={0} precision={4} />

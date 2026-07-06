@@ -119,7 +119,7 @@ export function TradePlanTable({ items, loading, error, isEmpty, onEdit, onUpdat
   }
 
   if (error) {
-    return <Alert type="error" showIcon message="加载失败" description={error} />;
+    return <Alert type="error" showIcon title="加载失败" description={error} />;
   }
 
   if (isEmpty) {

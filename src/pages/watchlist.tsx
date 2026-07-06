@@ -103,7 +103,7 @@ export function WatchlistPage() {
         <Alert
           type="error"
           showIcon
-          message="加载失败"
+          title="加载失败"
           description={error}
           action={<Button size="small" onClick={() => void refresh()}>重试</Button>}
           style={{ marginBottom: 16 }}

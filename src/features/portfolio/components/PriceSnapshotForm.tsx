@@ -43,10 +43,10 @@ export function PriceSnapshotForm({ open, onClose, onSubmit, defaultDate }: Form
   };
 
   return (
-    <Drawer title="维护当前价" open={open} onClose={handleClose} width={520} destroyOnClose>
+    <Drawer title="维护当前价" open={open} onClose={handleClose} size={520} destroyOnClose>
       <Alert
         type="info"
-        message="当前价为手工录入，仅用于本地估算浮盈，不代表实时行情。"
+        title="当前价为手工录入，仅用于本地估算浮盈，不代表实时行情。"
         style={{ marginBottom: 16 }}
         showIcon
       />

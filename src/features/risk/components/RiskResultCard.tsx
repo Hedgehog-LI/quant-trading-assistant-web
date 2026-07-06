@@ -33,7 +33,7 @@ export function RiskResultCard({ result }: Props) {
       {result.warnings.length > 0 && (
         <Alert
           type={result.riskLevel === 'HIGH' ? 'error' : 'warning'}
-          message="风险提示"
+          title="风险提示"
           description={
             <ul style={{ margin: 0, paddingLeft: 16 }}>
               {result.warnings.map((w, i) => (
@@ -47,7 +47,7 @@ export function RiskResultCard({ result }: Props) {
 
       <Alert
         type="info"
-        message="免责声明"
+        title="免责声明"
         description={result.disclaimer}
         showIcon
       />

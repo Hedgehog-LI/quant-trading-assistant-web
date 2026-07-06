@@ -54,7 +54,7 @@ export function PortfolioPage() {
     return (
       <Alert
         type="error"
-        message="加载失败"
+        title="加载失败"
         description={error}
         action={
           <Button size="small" onClick={() => void refresh()}>
@@ -79,7 +79,7 @@ export function PortfolioPage() {
 
       <Alert
         type="warning"
-        message={summary?.disclaimer ?? '本页面仅用于交易记录和复盘，不构成投资建议。'}
+        title={summary?.disclaimer ?? '本页面仅用于交易记录和复盘，不构成投资建议。'}
         style={{ marginBottom: 12 }}
         showIcon
       />
@@ -88,7 +88,7 @@ export function PortfolioPage() {
         <Alert
           type="info"
           showIcon
-          message="数据来源：后端 API"
+          title="数据来源：后端 API"
           description={
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               <li>账本数据来源于后端 API，按后端交易流水实时计算（FIFO）。</li>
@@ -101,7 +101,7 @@ export function PortfolioPage() {
       ) : (
         <Alert
           type="info"
-          message="数据来源：本地浏览器。交易记录页录入的流水会在此实时计算（FIFO）。"
+          title="数据来源：本地浏览器。交易记录页录入的流水会在此实时计算（FIFO）。"
           style={{ marginBottom: 16 }}
           showIcon
         />

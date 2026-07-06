@@ -65,7 +65,7 @@ export function WatchlistForm({ open, editingItem, onClose, onSubmit }: Props) {
       title={editingItem ? '编辑自选股' : '新增自选股'}
       open={open}
       onClose={handleClose}
-      width={480}
+      size={480}
       destroyOnClose
     >
       <Form<FormValues>

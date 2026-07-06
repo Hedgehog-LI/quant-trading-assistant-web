@@ -72,7 +72,7 @@ export function PortfolioSummaryCards({ summary }: Props) {
       {summary.warnings.length > 0 && (
         <Alert
           type="warning"
-          message="数据提示"
+          title="数据提示"
           description={
             <ul style={{ margin: 0, paddingLeft: 16 }}>
               {summary.warnings.map((w) => (

@@ -48,7 +48,9 @@ export function JournalPage() {
   // 表单提交：失败抛回 TradeJournalForm 由其 message.error 提示；成功后关闭 Drawer。
   const handleSubmit = async (values: JournalFormValues) => {
     if (editingItem) {
-      await update(editingItem.id, values as Partial<Omit<TradeJournal, 'id' | 'createdAt' | 'updatedAt'>>);
+      // 编辑时若原有关联计划但当前清空，显式 unlinkPlan=true 触发后端解绑
+      const unlinkPlan = !!editingItem.planId && !values.planId;
+      await update(editingItem.id, { ...(values as Partial<TradeJournal>), unlinkPlan });
       message.success('更新成功');
     } else {
       await add(values as Omit<TradeJournal, 'id' | 'amount' | 'reviewStatus' | 'createdAt' | 'updatedAt'>);
@@ -108,7 +110,7 @@ export function JournalPage() {
         <Alert
           type="error"
           showIcon
-          message="加载失败"
+          title="加载失败"
           description={error}
           action={<Button size="small" onClick={() => void refresh()}>重试</Button>}
           style={{ marginBottom: 16 }}
@@ -117,7 +119,7 @@ export function JournalPage() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin tip="加载中..." />
+          <Spin description="加载中..." />
         </div>
       ) : isEmpty ? (
         <Empty description="暂无交易记录" style={{ padding: 48 }} />
