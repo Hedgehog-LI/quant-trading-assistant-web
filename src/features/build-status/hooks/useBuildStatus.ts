@@ -45,7 +45,7 @@ export interface UseBuildStatusResult {
 
 export function useBuildStatus(): UseBuildStatusResult {
   const [filter, setFilter] = useState<BuildStatusFilter>({ priority: 'ALL', status: 'ALL', maturity: 'ALL' });
-  const [selectedId, setSelectedId] = useState<string | null>('position-snapshot');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const tree = useMemo(() => filterBuildTree(buildStatusTree, filter), [filter]);
   const flatNodes = useMemo(() => flattenBuildNodes(buildStatusTree), []);

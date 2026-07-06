@@ -25,9 +25,12 @@ export function BuildStatusPage() {
       <Typography.Title level={4} style={{ marginBottom: 8 }}>
         建设看板
       </Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
         从产品经理和理财经理视角查看系统建设路线、当前成熟度、数据可信度和下一步优先事项。
       </Typography.Paragraph>
+      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+        状态基线 v0.1.1 · 最近同步 2026-07-06 · 数据来源：前端静态快照（与 BUILD_CHECKLIST 同步）
+      </Typography.Text>
 
       <Alert
         type="info"
