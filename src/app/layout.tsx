@@ -10,6 +10,7 @@ import {
   FormOutlined,
   SettingOutlined,
   ProjectOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAppStore } from '../shared/stores/app-store';
@@ -25,6 +26,7 @@ const menuItems = [
   { key: '/portfolio', icon: <AccountBookOutlined />, label: '交易账本' },
   { key: '/position-snapshots', icon: <PieChartOutlined />, label: '持仓快照' },
   { key: '/review', icon: <FormOutlined />, label: '盘后复盘' },
+  { key: '/market-data', icon: <LineChartOutlined />, label: '行情数据' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
   { key: '/build-status', icon: <ProjectOutlined />, label: '建设看板' },
 ];

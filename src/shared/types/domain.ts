@@ -246,3 +246,42 @@ export interface AppSettings {
   apiMode: 'mock' | 'remote';
   apiBaseUrl: string;
 }
+
+// ============ Market Data（v0.2.0 行情基础） ============
+
+export interface StockBasic {
+  id: EntityId;
+  canonicalSymbol: string;
+  symbol: string;
+  name?: string;
+  market: string;
+  listDate?: string;
+  delisted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockDailyBar {
+  id: EntityId;
+  canonicalSymbol: string;
+  tradeDate: string;
+  adjustType: string;
+  dataSource: string;
+  openPrice: number;
+  highPrice: number;
+  lowPrice: number;
+  closePrice: number;
+  volume: number;
+  amount: number;
+}
+
+export interface DailyBarImportResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: { row: number; message: string }[];
+}
+
+export type StockMarket = 'SH' | 'SZ' | 'BJ';
+export type AdjustType = 'NONE' | 'QF' | 'HF';
