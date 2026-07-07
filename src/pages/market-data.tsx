@@ -18,37 +18,14 @@ export function MarketDataPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [importResult, setImportResult] = useState<DailyBarImportResult | null>(null);
   const [stockFilter, setStockFilter] = useState<{ market?: string; keyword?: string }>({});
-  const [barSymbol, setBarSymbol] = useState<string>('');
-
-  const refreshStocks = useCallback(async () => {
-    setLoadingStocks(true);
-    setError(null);
-    try {
-      setStocks(await getStocks(stockFilter.market, stockFilter.keyword));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败');
-    } finally {
-      setLoadingStocks(false);
-    }
-  }, [stockFilter]);
-
-  const refreshBars = useCallback(async () => {
-    setLoadingBars(true);
-    try {
-      setBars(await getDailyBars(barSymbol || undefined));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败');
-    } finally {
-      setLoadingBars(false);
-    }
-  }, [barSymbol]);
+  const [barFilter, setBarFilter] = useState<{ canonicalSymbol?: string; adjustType?: string }>({});
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
         const result = await getStocks(stockFilter.market, stockFilter.keyword);
-        if (!cancelled) setStocks(result);
+        if (!cancelled) setStocks(result.items);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : '加载失败');
       } finally {
@@ -57,6 +34,30 @@ export function MarketDataPage() {
     };
     void load();
     return () => { cancelled = true; };
+  }, [stockFilter]);
+
+  const refreshBars = useCallback(async () => {
+    setLoadingBars(true);
+    try {
+      const result = await getDailyBars(barFilter);
+      setBars(result.items);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加载失败');
+    } finally {
+      setLoadingBars(false);
+    }
+  }, [barFilter]);
+
+  const refreshStocks = useCallback(async () => {
+    setLoadingStocks(true);
+    try {
+      const result = await getStocks(stockFilter.market, stockFilter.keyword);
+      setStocks(result.items);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加载失败');
+    } finally {
+      setLoadingStocks(false);
+    }
   }, [stockFilter]);
 
   const handleAdd = async (values: { symbol: string; market: string; name?: string }) => {
@@ -84,7 +85,11 @@ export function MarketDataPage() {
     try {
       const result = await importDailyBars(file);
       setImportResult(result);
-      message.success(`导入完成：新增 ${result.inserted}，跳过 ${result.skipped}，失败 ${result.failed}`);
+      if (result.failed > 0) {
+        message.warning(`导入存在错误：失败 ${result.failed} 行`);
+      } else {
+        message.success(`导入完成：新增 ${result.inserted}，更新 ${result.updated}，跳过 ${result.skipped}`);
+      }
       void refreshBars();
     } catch (e) {
       message.error(e instanceof Error ? e.message : '导入失败');
@@ -101,16 +106,18 @@ export function MarketDataPage() {
 
       <Alert type="info" showIcon title="行情数据用于支撑指标与回测，不构成投资建议。" style={{ marginBottom: 16 }} />
 
-      {error && <Alert type="error" showIcon title="加载失败" description={error} style={{ marginBottom: 16 }} action={<Button size="small" onClick={() => { void refreshStocks(); void refreshBars(); }}>重试</Button>} />}
+      {error && <Alert type="error" showIcon title="加载失败" description={error} style={{ marginBottom: 16 }} action={<Button size="small" onClick={() => { setError(null); void refreshStocks(); }}>重试</Button>} />}
 
       <Tabs items={[
         {
           key: 'stocks', label: '证券主数据', children: (
             <>
               <Space style={{ marginBottom: 16 }} wrap>
-                <Select allowClear placeholder="市场" style={{ width: 120 }} value={stockFilter.market} onChange={(v) => setStockFilter({ ...stockFilter, market: v })}
+                <Select allowClear placeholder="市场" style={{ width: 120 }} value={stockFilter.market}
+                  onChange={(v) => setStockFilter({ ...stockFilter, market: v })}
                   options={[{ value: 'SH', label: 'SH' }, { value: 'SZ', label: 'SZ' }, { value: 'BJ', label: 'BJ' }]} />
-                <Input allowClear placeholder="搜索代码/名称" style={{ width: 200 }} value={stockFilter.keyword} onChange={(e) => setStockFilter({ ...stockFilter, keyword: e.target.value })} />
+                <Input allowClear placeholder="搜索代码/名称" style={{ width: 200 }} value={stockFilter.keyword}
+                  onChange={(e) => setStockFilter({ ...stockFilter, keyword: e.target.value })} />
                 <Button icon={<ReloadOutlined />} onClick={() => void refreshStocks()}>刷新</Button>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormOpen(true)}>新增证券</Button>
               </Space>
@@ -137,14 +144,18 @@ export function MarketDataPage() {
           key: 'bars', label: '日 K 数据', children: (
             <>
               <Space style={{ marginBottom: 16 }} wrap>
-                <Input allowClear placeholder="canonical_symbol" style={{ width: 200 }} value={barSymbol} onChange={(e) => setBarSymbol(e.target.value)} />
+                <Input allowClear placeholder="canonical_symbol" style={{ width: 200 }} value={barFilter.canonicalSymbol ?? ''}
+                  onChange={(e) => setBarFilter({ ...barFilter, canonicalSymbol: e.target.value || undefined })} />
+                <Select allowClear placeholder="复权" style={{ width: 120 }} value={barFilter.adjustType}
+                  onChange={(v) => setBarFilter({ ...barFilter, adjustType: v })}
+                  options={[{ value: 'NONE', label: '不复权' }, { value: 'QF', label: '前复权' }, { value: 'HF', label: '后复权' }]} />
                 <Button icon={<ReloadOutlined />} onClick={() => void refreshBars()}>查询</Button>
                 <Upload accept=".csv" showUploadList={false} beforeUpload={handleImport}>
                   <Button icon={<UploadOutlined />}>导入 CSV</Button>
                 </Upload>
                 <Button icon={<DownloadOutlined />} onClick={() => {
-                  const csv = 'canonical_symbol,trade_date,open,high,low,close,volume,amount,adjust_type\nSH.600519,2026-07-01,1680.00,1695.00,1678.00,1690.00,25000,42250000.00,NONE\n';
-                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const csvData = 'canonical_symbol,trade_date,open,high,low,close,volume,amount,adjust_type\nSH.600519,2026-07-01,1680.00,1695.00,1678.00,1690.00,25000,42250000.00,NONE\n';
+                  const blob = new Blob([csvData], { type: 'text/csv' });
                   const a = document.createElement('a');
                   a.href = URL.createObjectURL(blob);
                   a.download = 'daily-bar-template.csv';
@@ -152,12 +163,17 @@ export function MarketDataPage() {
                 }}>下载模板</Button>
               </Space>
               {importResult && (
-                <Alert type={importResult.failed > 0 ? 'warning' : 'success'} showIcon style={{ marginBottom: 16 }}
+                <Alert
+                  type={importResult.failed > 0 ? 'warning' : 'success'}
+                  showIcon
+                  style={{ marginBottom: 16 }}
                   title={`新增 ${importResult.inserted} / 更新 ${importResult.updated} / 跳过 ${importResult.skipped} / 失败 ${importResult.failed}`}
-                  description={importResult.errors.length > 0 ? importResult.errors.map((e) => `第 ${e.row} 行: ${e.message}`).join('；') : '导入成功'}
+                  description={importResult.errors.length > 0
+                    ? importResult.errors.slice(0, 5).map((e) => `第 ${e.row} 行: ${e.message}`).join('；')
+                    : '导入成功'}
                 />
               )}
-              {loadingBars ? <Spin /> : bars.length === 0 ? <Empty description="暂无日 K 数据，请导入 CSV" /> : (
+              {loadingBars ? <Spin /> : bars.length === 0 ? <Empty description="暂无日 K 数据，请导入 CSV 或查询" /> : (
                 <Table<StockDailyBar> size="small" rowKey="id" pagination={{ pageSize: 50 }} scroll={{ x: 'max-content' }}
                   columns={[
                     { title: '代码', dataIndex: 'canonicalSymbol', width: 140 },
@@ -182,7 +198,9 @@ export function MarketDataPage() {
   );
 }
 
-function StockFormDrawer({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (v: { symbol: string; market: string; name?: string }) => Promise<void>; }) {
+function StockFormDrawer({ open, onClose, onSubmit }: {
+  open: boolean; onClose: () => void; onSubmit: (v: { symbol: string; market: string; name?: string }) => Promise<void>;
+}) {
   const [form] = Form.useForm<{ symbol: string; market: string; name?: string }>();
   return (
     <Drawer title="新增证券" open={open} onClose={() => { form.resetFields(); onClose(); }} size={420} destroyOnClose>

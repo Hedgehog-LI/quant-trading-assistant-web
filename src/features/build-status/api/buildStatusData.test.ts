@@ -35,18 +35,27 @@ describe('buildStatusData', () => {
     expect(node?.progress).toBe(100);
   });
 
-  it('存在 P1 market-data-foundation 一级节点（TODO/M1）', () => {
+  it('存在 P1 market-data-foundation 一级节点（IN_PROGRESS）', () => {
     const top = buildStatusTree.find((n) => n.id === 'market-data-foundation');
     expect(top).toBeDefined();
     expect(top?.priority).toBe('P1');
-    expect(top?.status).toBe('TODO');
-    expect(top?.maturity).toBe('M1');
+    expect(top?.status).toBe('IN_PROGRESS');
   });
 
-  it('market-data-foundation 含 stock-basic / daily-bar-import / market-data-provider', () => {
-    const top = buildStatusTree.find((n) => n.id === 'market-data-foundation');
-    const childIds = (top?.children ?? []).map((c) => c.id);
-    expect(childIds).toEqual(['stock-basic', 'daily-bar-import', 'market-data-provider']);
+  it('stock-basic 与 daily-bar-import 为 DONE/M4', () => {
+    const nodes = flattenBuildNodes(buildStatusTree);
+    const stockBasic = nodes.find((n) => n.id === 'stock-basic');
+    const dailyBar = nodes.find((n) => n.id === 'daily-bar-import');
+    expect(stockBasic?.status).toBe('DONE');
+    expect(stockBasic?.maturity).toBe('M4');
+    expect(dailyBar?.status).toBe('DONE');
+    expect(dailyBar?.maturity).toBe('M4');
+  });
+
+  it('market-data-provider 保持 TODO/M1', () => {
+    const provider = flattenBuildNodes(buildStatusTree).find((n) => n.id === 'market-data-provider');
+    expect(provider?.status).toBe('TODO');
+    expect(provider?.maturity).toBe('M1');
   });
 
   it('daily-bar-import 不重复出现在 quant-analysis', () => {

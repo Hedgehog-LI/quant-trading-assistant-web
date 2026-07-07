@@ -1,17 +1,24 @@
 /**
  * 行情数据 API（mock/remote 双模式）。
- * mock 使用 localStorage；remote 调用 /api/v1/market-data/*。
+ * mock 使用 PapaParse 解析 CSV + localStorage；remote 调用 /api/v1/market-data/*。
+ * 校验、原子性、幂等键语义与后端一致。
  */
+import Papa from 'papaparse';
 import { client } from '../../../shared/api/client';
 import type { ApiResponse } from '../../../shared/api/types';
-import { unwrap } from '../../../shared/api/unwrappers';
+import { unwrap, unwrapVoid } from '../../../shared/api/unwrappers';
 import { getItem, setItem } from '../../../shared/api/localStorageClient';
 import { generateId } from '../../../shared/utils/id';
 import { getSettings } from '../../settings/api/settingsApi';
-import type { StockBasic, StockDailyBar, DailyBarImportResult } from '../../../shared/types/domain';
+import type {
+  StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
+} from '../../../shared/types/domain';
 
 const STOCK_KEY = 'stocks';
 const BAR_KEY = 'stockDailyBars';
+
+const CSV_HEADERS = ['canonical_symbol', 'trade_date', 'open', 'high', 'low', 'close', 'volume', 'amount', 'adjust_type'];
+const MAX_ROWS = 10000;
 
 // ============ 类型 ============
 export interface StockBasicInput {
@@ -21,18 +28,73 @@ export interface StockBasicInput {
   listDate?: string;
   delisted?: boolean;
 }
+export interface StockBasicUpdate {
+  name?: string;
+  listDate?: string;
+  delisted?: boolean;
+}
+export interface DailyBarFilter {
+  canonicalSymbol?: string;
+  fromDate?: string;
+  toDate?: string;
+  adjustType?: string;
+  dataSource?: string;
+  page?: number;
+  size?: number;
+}
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+// ============ 共享校验 ============
+function validateCanonical(s: string): string {
+  const v = s.trim().toUpperCase();
+  if (!/^(SH|SZ|BJ)\.\d{4,6}$/.test(v)) throw new Error(`canonical_symbol 格式不合法: ${v}`);
+  return v;
+}
+function validateAdjust(t: string): string {
+  const v = t.trim().toUpperCase();
+  if (!['NONE', 'QF', 'HF'].includes(v)) throw new Error(`adjust_type 必须为 NONE/QF/HF: ${v}`);
+  return v;
+}
+function validateOhlc(o: number, h: number, l: number, c: number): void {
+  if (o <= 0 || h <= 0 || l <= 0 || c <= 0) throw new Error('OHLC 价格必须大于 0');
+  if (h < o || h < c || h < l) throw new Error('high 不能小于其他价格');
+  if (l > o || l > c || l > h) throw new Error('low 不能大于其他价格');
+}
+
+function uniqueKey(b: { canonicalSymbol: string; tradeDate: string; adjustType: string; dataSource: string }): string {
+  return `${b.canonicalSymbol}|${b.tradeDate}|${b.adjustType}|${b.dataSource}`;
+}
 
 // ============ mock ============
 function buildCanonical(market: string, symbol: string): string {
   return `${market.trim().toUpperCase()}.${symbol.trim()}`;
 }
 
+interface MockBar extends StockDailyBar {
+  _key: string;
+}
+
+function readBars(): MockBar[] {
+  const bars = getItem<StockDailyBar[]>(BAR_KEY) ?? [];
+  return bars.map((b) => ({ ...b, _key: uniqueKey(b) }));
+}
+function writeBars(bars: MockBar[]): void {
+  setItem(BAR_KEY, bars.map(({ _key, ...rest }) => rest as StockDailyBar));
+}
+
 const mockApi = {
-  async listStocks(market?: string, keyword?: string): Promise<StockBasic[]> {
+  async listStocks(market?: string, keyword?: string, page = 1, size = 20): Promise<PageResult<StockBasic>> {
     const all = getItem<StockBasic[]>(STOCK_KEY) ?? [];
-    return all
+    const filtered = all
       .filter((s) => !market || s.market === market)
       .filter((s) => !keyword || s.canonicalSymbol.includes(keyword) || (s.name ?? '').includes(keyword));
+    const offset = (page - 1) * size;
+    return { items: filtered.slice(offset, offset + size), total: filtered.length, page, size };
   },
   async createStock(input: StockBasicInput): Promise<StockBasic> {
     const all = getItem<StockBasic[]>(STOCK_KEY) ?? [];
@@ -40,107 +102,170 @@ const mockApi = {
     if (all.some((s) => s.canonicalSymbol === canonical)) throw new Error('证券已存在: ' + canonical);
     const now = new Date().toISOString();
     const stock: StockBasic = {
-      ...input,
-      canonicalSymbol: canonical,
-      delisted: input.delisted ?? false,
-      id: generateId(),
-      createdAt: now,
-      updatedAt: now,
+      ...input, canonicalSymbol: canonical, delisted: input.delisted ?? false,
+      id: generateId(), createdAt: now, updatedAt: now,
     };
     all.push(stock);
     setItem(STOCK_KEY, all);
     return stock;
   },
+  async updateStock(id: EntityId, input: StockBasicUpdate): Promise<StockBasic | null> {
+    const all = getItem<StockBasic[]>(STOCK_KEY) ?? [];
+    const idx = all.findIndex((s) => s.id === id);
+    if (idx === -1) return null;
+    all[idx] = { ...all[idx], ...input, updatedAt: new Date().toISOString() };
+    setItem(STOCK_KEY, all);
+    return all[idx];
+  },
   async deleteStock(canonical: string): Promise<void> {
+    const bars = readBars();
+    if (bars.some((b) => b.canonicalSymbol === canonical)) {
+      throw new Error(`证券 ${canonical} 存在日 K 数据，不可删除`);
+    }
     const all = getItem<StockBasic[]>(STOCK_KEY) ?? [];
     setItem(STOCK_KEY, all.filter((s) => s.canonicalSymbol !== canonical));
   },
-  async queryBars(canonical?: string, fromDate?: string, toDate?: string): Promise<StockDailyBar[]> {
-    const all = getItem<StockDailyBar[]>(BAR_KEY) ?? [];
-    return all
-      .filter((b) => !canonical || b.canonicalSymbol === canonical)
-      .filter((b) => !fromDate || b.tradeDate >= fromDate)
-      .filter((b) => !toDate || b.tradeDate <= toDate)
+  async queryBars(filter: DailyBarFilter, page = 1, size = 20): Promise<PageResult<StockDailyBar>> {
+    const all = readBars();
+    const filtered = all
+      .filter((b) => !filter.canonicalSymbol || b.canonicalSymbol === filter.canonicalSymbol)
+      .filter((b) => !filter.fromDate || b.tradeDate >= filter.fromDate)
+      .filter((b) => !filter.toDate || b.tradeDate <= filter.toDate)
+      .filter((b) => !filter.adjustType || b.adjustType === filter.adjustType)
+      .filter((b) => !filter.dataSource || b.dataSource === filter.dataSource)
       .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+    const offset = (page - 1) * size;
+    return {
+      items: filtered.slice(offset, offset + size).map(({ _key: _k, ...rest }) => rest as StockDailyBar),
+      total: filtered.length, page, size,
+    };
   },
   async importBars(file: File): Promise<DailyBarImportResult> {
-    // mock CSV 解析（简化：与后端口径一致）
+    // PapaParse 先全量解析
     const text = await file.text();
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) return { inserted: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
-    const headers = lines[0].split(',').map((h) => h.trim());
-    const stocks = getItem<StockBasic[]>(STOCK_KEY) ?? [];
-    const stockSet = new Set(stocks.map((s) => s.canonicalSymbol));
-    const allBars = getItem<StockDailyBar[]>(BAR_KEY) ?? [];
-    let inserted = 0, skipped = 0, failed = 0;
-    const errors: { row: number; message: string }[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const vals = lines[i].split(',');
-      const row: Record<string, string> = {};
-      headers.forEach((h, j) => (row[h] = (vals[j] ?? '').trim()));
-      const canonical = (row.canonical_symbol ?? '').toUpperCase();
-      if (!stockSet.has(canonical)) {
-        failed++;
-        errors.push({ row: i + 1, message: '证券不存在: ' + canonical });
-        continue;
-      }
-      const exists = allBars.some(
-        (b) => b.canonicalSymbol === canonical && b.tradeDate === row.trade_date,
-      );
-      if (exists) {
-        skipped++;
-      } else {
-        allBars.push({
-          id: generateId(),
-          canonicalSymbol: canonical,
-          tradeDate: row.trade_date,
-          adjustType: row.adjust_type ?? 'NONE',
-          dataSource: 'CSV',
-          openPrice: parseFloat(row.open),
-          highPrice: parseFloat(row.high),
-          lowPrice: parseFloat(row.low),
-          closePrice: parseFloat(row.close),
-          volume: parseInt(row.volume) || 0,
-          amount: parseFloat(row.amount) || 0,
-        });
-        inserted++;
+    if (!text.trim()) return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: '文件为空' }] };
+    const result = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+
+    // 表头校验
+    const actualHeaders = result.meta.fields ?? [];
+    for (const h of CSV_HEADERS) {
+      if (!actualHeaders.includes(h)) {
+        return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: `表头缺少: ${h}` }] };
       }
     }
-    setItem(BAR_KEY, allBars);
-    return { inserted, updated: 0, skipped, failed, errors };
+    if (result.data.length > MAX_ROWS) {
+      return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: MAX_ROWS + 1, message: `超过最大行数 ${MAX_ROWS}` }] };
+    }
+
+    const stocks = getItem<StockBasic[]>(STOCK_KEY) ?? [];
+    const stockSet = new Set(stocks.map((s) => s.canonicalSymbol));
+    const allBars = readBars();
+    const barMap = new Map<string, MockBar>();
+    allBars.forEach((b) => barMap.set(b._key, b));
+
+    const errors: { row: number; message: string }[] = [];
+    let inserted = 0, updated = 0, skipped = 0, failed = 0;
+    const fileSeen = new Map<string, StockDailyBar>(); // 文件内重复检测
+
+    result.data.forEach((row, i) => {
+      const rowNum = i + 2;
+      try {
+        const canonicalSymbol = validateCanonical(row.canonical_symbol ?? '');
+        const tradeDate = (row.trade_date ?? '').trim();
+        const adjustType = validateAdjust(row.adjust_type ?? 'NONE');
+        const open = parseFloat(row.open);
+        const high = parseFloat(row.high);
+        const low = parseFloat(row.low);
+        const close = parseFloat(row.close);
+        const volume = parseInt(row.volume ?? '0');
+        const amount = parseFloat(row.amount ?? '0');
+        validateOhlc(open, high, low, close);
+        if (volume < 0) throw new Error('volume 不能为负');
+        if (amount < 0) throw new Error('amount 不能为负');
+        if (!tradeDate) throw new Error('trade_date 不能为空');
+        if (!stockSet.has(canonicalSymbol)) throw new Error(`证券不存在: ${canonicalSymbol}`);
+
+        const dataSource = 'CSV';
+        const key = `${canonicalSymbol}|${tradeDate}|${adjustType}|${dataSource}`;
+        const bar: StockDailyBar = {
+          id: '', canonicalSymbol, tradeDate, adjustType, dataSource,
+          openPrice: open, highPrice: high, lowPrice: low, closePrice: close,
+          volume, amount,
+        };
+
+        // 文件内重复键
+        if (fileSeen.has(key)) {
+          const first = fileSeen.get(key)!;
+          if (JSON.stringify(first) === JSON.stringify(bar)) {
+            skipped++;
+          } else {
+            failed++;
+            errors.push({ row: rowNum, message: `同一文件内幂等键冲突: ${key}` });
+          }
+          return;
+        }
+        fileSeen.set(key, bar);
+
+        // DB existing
+        const existing = barMap.get(key);
+        if (!existing) {
+          inserted++;
+          barMap.set(key, { ...bar, id: generateId(), _key: key } as MockBar);
+        } else {
+          const sameData = existing.openPrice === open && existing.highPrice === high
+            && existing.lowPrice === low && existing.closePrice === close
+            && existing.volume === volume && existing.amount === amount;
+          if (sameData) {
+            skipped++;
+          } else {
+            updated++;
+            Object.assign(existing, { openPrice: open, highPrice: high, lowPrice: low, closePrice: close, volume, amount });
+          }
+        }
+      } catch (e) {
+        failed++;
+        errors.push({ row: rowNum, message: e instanceof Error ? e.message : '解析错误' });
+      }
+    });
+
+    // 原子提交：有错误不写库
+    if (failed > 0) {
+      return { inserted: 0, updated: 0, skipped: 0, failed, errors };
+    }
+    writeBars(Array.from(barMap.values()));
+    return { inserted, updated, skipped, failed: 0, errors: [] };
   },
 };
 
 // ============ remote ============
 const remoteApi = {
-  async listStocks(market?: string, keyword?: string): Promise<StockBasic[]> {
-    return unwrap(
-      client.get<ApiResponse<StockBasic[]>>('/market-data/stocks', {
-        params: { market, keyword },
-      }),
-    );
+  async listStocks(market?: string, keyword?: string, page?: number, size?: number): Promise<PageResult<StockBasic>> {
+    return unwrap(client.get<ApiResponse<PageResult<StockBasic>>>('/market-data/stocks', {
+      params: { market, keyword, page, size },
+    }));
   },
   async createStock(input: StockBasicInput): Promise<StockBasic> {
     return unwrap(client.post<ApiResponse<StockBasic>>('/market-data/stocks', input));
   },
-  async deleteStock(canonical: string): Promise<void> {
-    await client.delete(`/market-data/stocks/${encodeURIComponent(canonical)}`);
+  async updateStock(id: EntityId, input: StockBasicUpdate): Promise<StockBasic | null> {
+    try {
+      return await unwrap(client.put<ApiResponse<StockBasic>>(`/market-data/stocks/${id}`, input));
+    } catch { return null; }
   },
-  async queryBars(canonical?: string, fromDate?: string, toDate?: string): Promise<StockDailyBar[]> {
-    return unwrap(
-      client.get<ApiResponse<StockDailyBar[]>>('/market-data/daily-bars', {
-        params: { canonicalSymbol: canonical, fromDate, toDate },
-      }),
-    );
+  async deleteStock(canonical: string): Promise<void> {
+    await unwrapVoid(client.delete<ApiResponse<unknown>>(`/market-data/stocks/${encodeURIComponent(canonical)}`));
+  },
+  async queryBars(filter: DailyBarFilter, page?: number, size?: number): Promise<PageResult<StockDailyBar>> {
+    return unwrap(client.get<ApiResponse<PageResult<StockDailyBar>>>('/market-data/daily-bars', {
+      params: { ...filter, page, size },
+    }));
   },
   async importBars(file: File): Promise<DailyBarImportResult> {
     const formData = new FormData();
     formData.append('file', file);
-    return unwrap(
-      client.post<ApiResponse<DailyBarImportResult>>('/market-data/daily-bars/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }),
-    );
+    return unwrap(client.post<ApiResponse<DailyBarImportResult>>('/market-data/daily-bars/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }));
   },
 };
 
@@ -149,10 +274,11 @@ function pick<T>(mock: T, remote: T): T {
 }
 
 // ============ 具名导出 ============
-export const getStocks = (market?: string, keyword?: string) =>
-  pick(mockApi, remoteApi).listStocks(market, keyword);
+export const getStocks = (market?: string, keyword?: string, page?: number, size?: number) =>
+  pick(mockApi, remoteApi).listStocks(market, keyword, page, size);
 export const addStock = (input: StockBasicInput) => pick(mockApi, remoteApi).createStock(input);
+export const updateStock = (id: EntityId, input: StockBasicUpdate) => pick(mockApi, remoteApi).updateStock(id, input);
 export const deleteStock = (canonical: string) => pick(mockApi, remoteApi).deleteStock(canonical);
-export const getDailyBars = (canonical?: string, fromDate?: string, toDate?: string) =>
-  pick(mockApi, remoteApi).queryBars(canonical, fromDate, toDate);
+export const getDailyBars = (filter: DailyBarFilter, page?: number, size?: number) =>
+  pick(mockApi, remoteApi).queryBars(filter, page, size);
 export const importDailyBars = (file: File) => pick(mockApi, remoteApi).importBars(file);
