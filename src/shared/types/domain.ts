@@ -273,6 +273,7 @@ export interface StockDailyBar {
   closePrice: number;
   volume: number;
   amount: number;
+  fetchedAt?: string;
 }
 
 export interface DailyBarImportResult {

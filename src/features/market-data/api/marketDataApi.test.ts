@@ -112,7 +112,7 @@ describe('marketDataApi mock', () => {
   it('错误表头 rejected', async () => {
     const r = await importDailyBars(new File([Buffer.from('foo,bar\nx,y\n')], 't.csv'));
     expect(r.failed).toBe(1);
-    expect(r.errors[0].message).toContain('表头缺少');
+    expect(r.errors[0].message).toContain('表头');
   });
 
   it('空文件 rejected', async () => {
@@ -134,5 +134,61 @@ describe('marketDataApi mock', () => {
     expect(page1.items.length).toBe(2);
     const page2 = await getDailyBars({ canonicalSymbol: 'SH.600519' }, 2, 2);
     expect(page2.items.length).toBe(1);
+  });
+
+  // ===== 额外校验测试 =====
+
+  it('非法数字 failed', async () => {
+    await addStock({ symbol: '600519', market: 'SH', name: '茅台' });
+    const r = await importDailyBars(new File([csv(['SH.600519,2026-07-01,abc,1695,1678,1690,25000,42250000,NONE'])], 't.csv'));
+    expect(r.failed).toBe(1);
+    expect(r.errors[0].message).toContain('open');
+  });
+
+  it('非法日期 failed', async () => {
+    await addStock({ symbol: '600519', market: 'SH', name: '茅台' });
+    const r = await importDailyBars(new File([csv(['SH.600519,2026-13-45,1680,1695,1678,1690,25000,42250000,NONE'])], 't.csv'));
+    expect(r.failed).toBe(1);
+    expect(r.errors[0].message).toContain('日期');
+  });
+
+  it('表头列顺序错误 rejected', async () => {
+    const wrongCsv = 'trade_date,canonical_symbol,open,high,low,close,volume,amount,adjust_type\n2026-07-01,SH.600519,1680,1695,1678,1690,25000,42250000,NONE\n';
+    const r = await importDailyBars(new File([wrongCsv], 't.csv'));
+    expect(r.failed).toBe(1);
+    expect(r.errors[0].message).toContain('表头');
+  });
+
+  it('表头列数不匹配 rejected', async () => {
+    const wrongCsv = 'canonical_symbol,trade_date,open,high,low,close,volume,amount\nSH.600519,2026-07-01,1680,1695,1678,1690,25000,42250000\n';
+    const r = await importDailyBars(new File([wrongCsv], 't.csv'));
+    expect(r.failed).toBe(1);
+    expect(r.errors[0].message).toContain('表头列数');
+  });
+
+  it('空文件 rejected', async () => {
+    const r = await importDailyBars(new File([''], 'empty.csv'));
+    expect(r.failed).toBe(1);
+    expect(r.errors[0].message).toContain('空');
+  });
+
+  it('日期范围 + 复权类型 + 来源筛选', async () => {
+    await addStock({ symbol: '600519', market: 'SH', name: '茅台' });
+    await importDailyBars(new File([csv([
+      'SH.600519,2026-07-01,1680,1695,1678,1690,25000,42250000,NONE',
+      'SH.600519,2026-07-02,1690,1700,1685,1695,22000,37290000,NONE',
+      'SH.600519,2026-07-03,1695,1710,1690,1705,18000,30690000,NONE',
+    ])], 't.csv'));
+    // 日期范围
+    const range = await getDailyBars({ canonicalSymbol: 'SH.600519', fromDate: '2026-07-02', toDate: '2026-07-02' });
+    expect(range.total).toBe(1);
+    // 复权类型
+    const adj = await getDailyBars({ canonicalSymbol: 'SH.600519', adjustType: 'NONE' });
+    expect(adj.total).toBe(3);
+    const adjEmpty = await getDailyBars({ canonicalSymbol: 'SH.600519', adjustType: 'QF' });
+    expect(adjEmpty.total).toBe(0);
+    // 来源
+    const src = await getDailyBars({ canonicalSymbol: 'SH.600519', dataSource: 'CSV' });
+    expect(src.total).toBe(3);
   });
 });

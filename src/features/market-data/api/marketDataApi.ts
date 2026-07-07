@@ -19,6 +19,7 @@ const BAR_KEY = 'stockDailyBars';
 
 const CSV_HEADERS = ['canonical_symbol', 'trade_date', 'open', 'high', 'low', 'close', 'volume', 'amount', 'adjust_type'];
 const MAX_ROWS = 10000;
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 // ============ 类型 ============
 export interface StockBasicInput {
@@ -64,6 +65,31 @@ function validateOhlc(o: number, h: number, l: number, c: number): void {
   if (o <= 0 || h <= 0 || l <= 0 || c <= 0) throw new Error('OHLC 价格必须大于 0');
   if (h < o || h < c || h < l) throw new Error('high 不能小于其他价格');
   if (l > o || l > c || l > h) throw new Error('low 不能大于其他价格');
+}
+function validateDate(d: string): string {
+  const trimmed = d.trim();
+  // 严格 YYYY-MM-DD + 真实日期
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) throw new Error(`日期格式不合法（需 YYYY-MM-DD）: ${trimmed}`);
+  const date = new Date(trimmed + 'T00:00:00Z');
+  if (isNaN(date.getTime())) throw new Error(`日期不真实: ${trimmed}`);
+  // 验证 round-trip（避免 2026-13-45 等被 new Date 接受的情况）
+  const parts = trimmed.split('-');
+  if (date.getUTCFullYear() !== parseInt(parts[0]) ||
+      date.getUTCMonth() + 1 !== parseInt(parts[1]) ||
+      date.getUTCDate() !== parseInt(parts[2])) {
+    throw new Error(`日期不真实: ${trimmed}`);
+  }
+  return trimmed;
+}
+function validateNumber(v: string, field: string): number {
+  const n = parseFloat(v.trim());
+  if (!Number.isFinite(n)) throw new Error(`${field} 不是合法数字: ${v}`);
+  return n;
+}
+function validateInt(v: string, field: string): number {
+  const n = parseInt(v.trim(), 10);
+  if (!Number.isFinite(n)) throw new Error(`${field} 不是合法整数: ${v}`);
+  return n;
 }
 
 function uniqueKey(b: { canonicalSymbol: string; tradeDate: string; adjustType: string; dataSource: string }): string {
@@ -141,22 +167,46 @@ const mockApi = {
     };
   },
   async importBars(file: File): Promise<DailyBarImportResult> {
-    // PapaParse 先全量解析
+    // 1. 文件级校验
+    if (file.size <= 0) {
+      return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: '文件为空' }] };
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: `文件超过 ${MAX_FILE_SIZE} 字节限制` }] };
+    }
+
+    // 2. PapaParse 全量解析
     const text = await file.text();
-    if (!text.trim()) return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: '文件为空' }] };
+    if (!text.trim()) {
+      return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: '文件为空' }] };
+    }
     const result = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
 
-    // 表头校验
+    // 3. PapaParse 解析错误
+    if (result.errors.length > 0) {
+      const errors = result.errors.slice(0, 50).map((e) => ({
+        row: (e.row ?? 0) + 2, message: e.message,
+      }));
+      return { inserted: 0, updated: 0, skipped: 0, failed: errors.length, errors };
+    }
+
+    // 4. 表头严格校验（数量、名称、顺序完全一致）
     const actualHeaders = result.meta.fields ?? [];
-    for (const h of CSV_HEADERS) {
-      if (!actualHeaders.includes(h)) {
-        return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: `表头缺少: ${h}` }] };
+    if (actualHeaders.length !== CSV_HEADERS.length) {
+      return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: `表头列数不匹配，期望 ${CSV_HEADERS.length} 列，实际 ${actualHeaders.length} 列` }] };
+    }
+    for (let i = 0; i < CSV_HEADERS.length; i++) {
+      if (actualHeaders[i] !== CSV_HEADERS[i]) {
+        return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: 0, message: `表头第 ${i + 1} 列不匹配，期望 ${CSV_HEADERS[i]}，实际 ${actualHeaders[i]}` }] };
       }
     }
+
+    // 5. 行数限制
     if (result.data.length > MAX_ROWS) {
       return { inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [{ row: MAX_ROWS + 1, message: `超过最大行数 ${MAX_ROWS}` }] };
     }
 
+    // 6. 逐行解析校验
     const stocks = getItem<StockBasic[]>(STOCK_KEY) ?? [];
     const stockSet = new Set(stocks.map((s) => s.canonicalSymbol));
     const allBars = readBars();
@@ -165,24 +215,23 @@ const mockApi = {
 
     const errors: { row: number; message: string }[] = [];
     let inserted = 0, updated = 0, skipped = 0, failed = 0;
-    const fileSeen = new Map<string, StockDailyBar>(); // 文件内重复检测
+    const fileSeen = new Map<string, StockDailyBar>();
 
     result.data.forEach((row, i) => {
       const rowNum = i + 2;
       try {
         const canonicalSymbol = validateCanonical(row.canonical_symbol ?? '');
-        const tradeDate = (row.trade_date ?? '').trim();
+        const tradeDate = validateDate(row.trade_date ?? '');
         const adjustType = validateAdjust(row.adjust_type ?? 'NONE');
-        const open = parseFloat(row.open);
-        const high = parseFloat(row.high);
-        const low = parseFloat(row.low);
-        const close = parseFloat(row.close);
-        const volume = parseInt(row.volume ?? '0');
-        const amount = parseFloat(row.amount ?? '0');
+        const open = validateNumber(row.open ?? '', 'open');
+        const high = validateNumber(row.high ?? '', 'high');
+        const low = validateNumber(row.low ?? '', 'low');
+        const close = validateNumber(row.close ?? '', 'close');
+        const volume = validateInt(row.volume ?? '0', 'volume');
+        const amount = validateNumber(row.amount ?? '0', 'amount');
         validateOhlc(open, high, low, close);
         if (volume < 0) throw new Error('volume 不能为负');
         if (amount < 0) throw new Error('amount 不能为负');
-        if (!tradeDate) throw new Error('trade_date 不能为空');
         if (!stockSet.has(canonicalSymbol)) throw new Error(`证券不存在: ${canonicalSymbol}`);
 
         const dataSource = 'CSV';
@@ -196,7 +245,8 @@ const mockApi = {
         // 文件内重复键
         if (fileSeen.has(key)) {
           const first = fileSeen.get(key)!;
-          if (JSON.stringify(first) === JSON.stringify(bar)) {
+          if (first.openPrice === open && first.highPrice === high && first.lowPrice === low
+              && first.closePrice === close && first.volume === volume && first.amount === amount) {
             skipped++;
           } else {
             failed++;
@@ -247,10 +297,8 @@ const remoteApi = {
   async createStock(input: StockBasicInput): Promise<StockBasic> {
     return unwrap(client.post<ApiResponse<StockBasic>>('/market-data/stocks', input));
   },
-  async updateStock(id: EntityId, input: StockBasicUpdate): Promise<StockBasic | null> {
-    try {
-      return await unwrap(client.put<ApiResponse<StockBasic>>(`/market-data/stocks/${id}`, input));
-    } catch { return null; }
+  async updateStock(id: EntityId, input: StockBasicUpdate): Promise<StockBasic> {
+    return unwrap(client.put<ApiResponse<StockBasic>>(`/market-data/stocks/${id}`, input));
   },
   async deleteStock(canonical: string): Promise<void> {
     await unwrapVoid(client.delete<ApiResponse<unknown>>(`/market-data/stocks/${encodeURIComponent(canonical)}`));
