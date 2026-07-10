@@ -361,10 +361,16 @@ const providerApi = {
       ? unwrap(client.get<ApiResponse<PageResult<StockQuoteSnapshot>>>('/market-data/quote-snapshots', { params: { canonicalSymbol, dataSource, page, size } }))
       : { items: [], total: 0, page, size };
   },
-  async createDailyBarSync(taskType: string, provider: string, scopeJson: string): Promise<MarketDataSyncTask> {
-    return getSettings().apiMode === 'remote'
-      ? unwrap(client.post<ApiResponse<MarketDataSyncTask>>('/market-data/sync-tasks/daily-bars', { taskType, provider, scopeJson }))
-      : { id: 'mock', taskType, provider, scopeJson, status: 'FAILED', createdAt: new Date().toISOString() } as MarketDataSyncTask;
+  async createDailyBarSync(taskType: string, provider: string, canonicalSymbol: string,
+                          startDate?: string, endDate?: string, adjustType?: string): Promise<MarketDataSyncTask> {
+    if (getSettings().apiMode === 'remote') {
+      return unwrap(client.post<ApiResponse<MarketDataSyncTask>>('/market-data/sync-tasks/daily-bars',
+        { taskType, provider, canonicalSymbol, startDate, endDate, adjustType }));
+    }
+    return {
+      id: 'mock', taskType, provider, scopeJson: JSON.stringify({ canonicalSymbol, startDate, endDate, adjustType }),
+      status: 'FAILED', createdAt: new Date().toISOString(),
+    } as MarketDataSyncTask;
   },
   async getSyncTasks(status?: string, provider?: string, page = 1, size = 20): Promise<PageResult<MarketDataSyncTask>> {
     return getSettings().apiMode === 'remote'
@@ -386,8 +392,9 @@ export const healthCheck = () => providerApi.healthCheck();
 export const fetchLatestQuotes = (symbols: string[], persist: boolean) => providerApi.fetchLatestQuotes(symbols, persist);
 export const getQuoteSnapshots = (canonicalSymbol?: string, dataSource?: string, page?: number, size?: number) =>
   providerApi.getQuoteSnapshots(canonicalSymbol, dataSource, page, size);
-export const createDailyBarSync = (taskType: string, provider: string, scopeJson: string) =>
-  providerApi.createDailyBarSync(taskType, provider, scopeJson);
+export const createDailyBarSync = (taskType: string, provider: string, canonicalSymbol: string,
+                                  startDate?: string, endDate?: string, adjustType?: string) =>
+  providerApi.createDailyBarSync(taskType, provider, canonicalSymbol, startDate, endDate, adjustType);
 export const getSyncTasks = (status?: string, provider?: string, page?: number, size?: number) =>
   providerApi.getSyncTasks(status, provider, page, size);
 export const getAlerts = (resolved?: boolean, severity?: string, canonicalSymbol?: string, page?: number, size?: number) =>

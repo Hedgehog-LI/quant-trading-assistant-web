@@ -7,11 +7,11 @@ import { PlusOutlined, UploadOutlined, ReloadOutlined, DownloadOutlined, EditOut
 import dayjs from 'dayjs';
 import {
   getStocks, addStock, updateStock, deleteStock, getDailyBars, importDailyBars,
-  getProviderStatus, healthCheck, getSyncTasks,
+  getProviderStatus, healthCheck, getSyncTasks, getQuoteSnapshots, fetchLatestQuotes,
   getAlerts, resolveAlert, createDailyBarSync,
 } from '../features/market-data/api/marketDataApi';
 import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
-  ProviderStatus, MarketDataSyncTask, MarketDataAlert } from '../shared/types/domain';
+  ProviderStatus, StockQuoteSnapshot, MarketDataSyncTask, MarketDataAlert } from '../shared/types/domain';
 
 const DISCLAIMER = '行情数据用于支撑指标与回测，不构成投资建议。LongPort 仅作为只读行情源，不发起下单/撤单/账户/真实持仓查询。';
 
@@ -26,11 +26,108 @@ export function MarketDataPage() {
       <Tabs items={[
         { key: 'status', label: '行情状态', children: <ProviderStatusTab /> },
         { key: 'stocks', label: '证券主数据', children: <StocksTab /> },
+        { key: 'quotes', label: '最新价快照', children: <QuoteSnapshotsTab /> },
         { key: 'bars', label: '日 K 数据', children: <BarsTab /> },
         { key: 'sync', label: '历史数据同步', children: <SyncTasksTab /> },
         { key: 'alerts', label: '异常提醒', children: <AlertsTab /> },
       ]} />
     </div>
+  );
+}
+
+// ===== 最新价快照 Tab =====
+function QuoteSnapshotsTab() {
+  const [snapshots, setSnapshots] = useState<StockQuoteSnapshot[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState<{ canonicalSymbol?: string; dataSource?: string }>({});
+  const [fetchSymbols, setFetchSymbols] = useState('');
+  const [fetchPersist] = useState(true);
+  const [fetching, setFetching] = useState(false);
+
+  const load = useCallback(async (p: number, f: typeof filter) => {
+    setLoading(true);
+    try {
+      const result = await getQuoteSnapshots(f.canonicalSymbol, f.dataSource, p, 20);
+      setSnapshots(result.items); setTotal(result.total);
+    } catch (e) { setError(e instanceof Error ? e.message : '加载失败'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try { const r = await getQuoteSnapshots(undefined, undefined, 1, 20); if (!cancelled) { setSnapshots(r.items); setTotal(r.total); } }
+      catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : '加载失败'); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleFetchLatest = async () => {
+    const symbols = fetchSymbols.split(/[,\n\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (symbols.length === 0) { message.warning('请输入至少一个证券代码'); return; }
+    setFetching(true);
+    try {
+      const result = await fetchLatestQuotes(symbols, fetchPersist);
+      if (result.length === 0) {
+        message.info('未获取到行情（可能 provider 未配置或无数据）');
+      } else {
+        message.success(`获取 ${result.length} 条行情`);
+        void load(1, filter);
+      }
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '获取行情失败');
+    } finally { setFetching(false); }
+  };
+
+  if (error) return <Alert type="error" showIcon title="加载失败" description={error}
+    action={<Button size="small" onClick={() => { setError(null); void load(page, filter); }}>重试</Button>} />;
+
+  return (
+    <>
+      <Alert type="info" showIcon style={{ marginBottom: 16 }}
+        title="外部行情只写入行情快照，不会覆盖手工当前价。" />
+      <Space style={{ marginBottom: 16, width: '100%' }} wrap direction="vertical">
+        <Space wrap>
+          <Input.TextArea placeholder="输入 canonicalSymbol，逗号或换行分隔（如 SH.600519, SZ.000001）"
+            style={{ width: 400 }} rows={1} value={fetchSymbols}
+            onChange={(e) => setFetchSymbols(e.target.value)} />
+          <Popconfirm title="拉取并保存最新行情？不覆盖手工当前价。" onConfirm={() => void handleFetchLatest()}>
+            <Button type="primary" loading={fetching} icon={<ReloadOutlined />}>拉取最新价</Button>
+          </Popconfirm>
+        </Space>
+        <Space wrap>
+          <Input allowClear placeholder="快照证券筛选" style={{ width: 200 }} value={filter.canonicalSymbol ?? ''}
+            onChange={(e) => setFilter({ ...filter, canonicalSymbol: e.target.value || undefined })} />
+          <Select allowClear placeholder="来源" style={{ width: 120 }} value={filter.dataSource}
+            onChange={(v) => setFilter({ ...filter, dataSource: v })}
+            options={[{ value: 'LONGPORT', label: 'LONGPORT' }, { value: 'CSV', label: 'CSV' }]} />
+          <Button icon={<ReloadOutlined />} onClick={() => { setPage(1); void load(1, filter); }}>查询</Button>
+        </Space>
+      </Space>
+      <Table<StockQuoteSnapshot> size="small" rowKey="id" loading={loading}
+        dataSource={snapshots}
+        pagination={{ current: page, pageSize: 20, total, onChange: (p) => { setPage(p); void load(p, filter); } }}
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: <Empty description="暂无外部最新价快照" /> }}
+        columns={[
+          { title: '代码', dataIndex: 'canonicalSymbol', width: 140 },
+          { title: '行情时间', dataIndex: 'quoteTime', width: 160, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+          { title: '最新价', dataIndex: 'currentPrice', width: 100, render: (v: number) => v?.toFixed(2) },
+          { title: '开', dataIndex: 'openPrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
+          { title: '高', dataIndex: 'highPrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
+          { title: '低', dataIndex: 'lowPrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
+          { title: '昨收', dataIndex: 'preClosePrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
+          { title: '成交量', dataIndex: 'volume', width: 100 },
+          { title: '来源', dataIndex: 'dataSource', width: 100, render: (v) => <Tag color="blue">{v}</Tag> },
+          { title: '抓取时间', dataIndex: 'fetchedAt', width: 160, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+        ]}
+      />
+    </>
   );
 }
 
@@ -250,7 +347,7 @@ function BarsTab() {
         <Select allowClear placeholder="来源" style={{ width: 120 }}
           value={filter.dataSource}
           onChange={(v) => setFilter({ ...filter, dataSource: v })}
-          options={[{ value: 'CSV', label: 'CSV' }, { value: 'MANUAL', label: '手工' }]} />
+          options={[{ value: 'CSV', label: 'CSV' }, { value: 'LONGPORT', label: 'LONGPORT' }, { value: 'MANUAL', label: '手工' }]} />
         <DatePicker placeholder="起始" value={filter.fromDate ? dayjs(filter.fromDate) : null}
           onChange={(d) => setFilter({ ...filter, fromDate: d?.format('YYYY-MM-DD') })} />
         <DatePicker placeholder="截止" value={filter.toDate ? dayjs(filter.toDate) : null}
@@ -312,6 +409,10 @@ function SyncTasksTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [syncSymbol, setSyncSymbol] = useState('');
+  const [syncStartDate, setSyncStartDate] = useState<string | undefined>(undefined);
+  const [syncEndDate, setSyncEndDate] = useState<string | undefined>(undefined);
+  const [syncAdjust, setSyncAdjust] = useState<string>('NONE');
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -334,10 +435,11 @@ function SyncTasksTab() {
   }, []);
 
   const handleCreate = async () => {
-    const scopeJson = JSON.stringify({ canonicalSymbol: 'SH.600519', startDate: '2026-06-01', endDate: '2026-07-01', adjustType: 'NONE' });
+    if (!syncSymbol.trim()) { message.warning('请输入证券代码'); return; }
     try {
-      await createDailyBarSync('DAILY_BAR_SYNC', 'LONGPORT', scopeJson);
-      message.success('同步任务已创建并执行');
+      await createDailyBarSync('DAILY_BAR_SYNC', 'LONGPORT', syncSymbol.trim().toUpperCase(),
+        syncStartDate || undefined, syncEndDate || undefined, syncAdjust || undefined);
+      message.success('同步任务已创建并执行。完成后可到"日 K 数据"筛选 LONGPORT 查看结果');
       void load(page);
     } catch (e) {
       message.error(e instanceof Error ? e.message : '创建同步任务失败');
@@ -349,9 +451,19 @@ function SyncTasksTab() {
   const statusColor: Record<string, string> = { SUCCEEDED: 'green', FAILED: 'red', PARTIAL_FAILED: 'orange', RUNNING: 'blue', PENDING: 'default' };
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => void handleCreate()}>创建日 K 同步任务</Button>
-        <Button icon={<ReloadOutlined />} onClick={() => void load(page)}>刷新</Button>
+      <Space style={{ marginBottom: 16, width: '100%' }} wrap direction="vertical">
+        <Space wrap>
+          <Input allowClear placeholder="canonicalSymbol（如 SH.600519）" style={{ width: 200 }} value={syncSymbol}
+            onChange={(e) => setSyncSymbol(e.target.value)} />
+          <DatePicker placeholder="起始日期" value={syncStartDate ? dayjs(syncStartDate) : null}
+            onChange={(d) => setSyncStartDate(d?.format('YYYY-MM-DD'))} />
+          <DatePicker placeholder="截止日期" value={syncEndDate ? dayjs(syncEndDate) : null}
+            onChange={(d) => setSyncEndDate(d?.format('YYYY-MM-DD'))} />
+          <Select value={syncAdjust} onChange={setSyncAdjust} style={{ width: 120 }}
+            options={[{ value: 'NONE', label: '不复权' }, { value: 'QF', label: '前复权' }, { value: 'HF', label: '后复权' }]} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => void handleCreate()}>创建同步</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void load(page)}>刷新</Button>
+        </Space>
       </Space>
       <Table<MarketDataSyncTask> size="small" rowKey="id" loading={loading}
         dataSource={data}
