@@ -12,6 +12,7 @@ import { generateId } from '../../../shared/utils/id';
 import { getSettings } from '../../settings/api/settingsApi';
 import type {
   StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
+  ProviderStatus, StockQuoteSnapshot, MarketDataSyncTask, MarketDataAlert,
 } from '../../../shared/types/domain';
 
 const STOCK_KEY = 'stocks';
@@ -330,3 +331,65 @@ export const deleteStock = (canonical: string) => pick(mockApi, remoteApi).delet
 export const getDailyBars = (filter: DailyBarFilter, page?: number, size?: number) =>
   pick(mockApi, remoteApi).queryBars(filter, page, size);
 export const importDailyBars = (file: File) => pick(mockApi, remoteApi).importBars(file);
+
+// ============ Provider / Quote / Sync / Alert ============
+const mockProvider: ProviderStatus = {
+  providerCode: 'LONGPORT', configured: false, reachable: false,
+  lastError: 'Mock 模式：LongPort 未配置', lastSuccessAt: null,
+};
+
+const providerApi = {
+  async getStatus(): Promise<ProviderStatus> {
+    return getSettings().apiMode === 'remote'
+      ? unwrap(client.get<ApiResponse<ProviderStatus>>('/market-data/providers/LONGPORT/status'))
+      : mockProvider;
+  },
+  async healthCheck(): Promise<ProviderStatus> {
+    return getSettings().apiMode === 'remote'
+      ? unwrap(client.post<ApiResponse<ProviderStatus>>('/market-data/providers/LONGPORT/health-check'))
+      : mockProvider;
+  },
+  async fetchLatestQuotes(symbols: string[], persist: boolean): Promise<StockQuoteSnapshot[]> {
+    if (getSettings().apiMode === 'remote') {
+      return unwrap(client.post<ApiResponse<StockQuoteSnapshot[]>>('/market-data/quotes/latest',
+        { canonicalSymbols: symbols, persist }));
+    }
+    return [];
+  },
+  async getQuoteSnapshots(canonicalSymbol?: string, dataSource?: string, page = 1, size = 20): Promise<PageResult<StockQuoteSnapshot>> {
+    return getSettings().apiMode === 'remote'
+      ? unwrap(client.get<ApiResponse<PageResult<StockQuoteSnapshot>>>('/market-data/quote-snapshots', { params: { canonicalSymbol, dataSource, page, size } }))
+      : { items: [], total: 0, page, size };
+  },
+  async createDailyBarSync(taskType: string, provider: string, scopeJson: string): Promise<MarketDataSyncTask> {
+    return getSettings().apiMode === 'remote'
+      ? unwrap(client.post<ApiResponse<MarketDataSyncTask>>('/market-data/sync-tasks/daily-bars', { taskType, provider, scopeJson }))
+      : { id: 'mock', taskType, provider, scopeJson, status: 'FAILED', createdAt: new Date().toISOString() } as MarketDataSyncTask;
+  },
+  async getSyncTasks(status?: string, provider?: string, page = 1, size = 20): Promise<PageResult<MarketDataSyncTask>> {
+    return getSettings().apiMode === 'remote'
+      ? unwrap(client.get<ApiResponse<PageResult<MarketDataSyncTask>>>('/market-data/sync-tasks', { params: { status, provider, page, size } }))
+      : { items: [], total: 0, page, size };
+  },
+  async getAlerts(resolved?: boolean, severity?: string, canonicalSymbol?: string, page = 1, size = 20): Promise<PageResult<MarketDataAlert>> {
+    return getSettings().apiMode === 'remote'
+      ? unwrap(client.get<ApiResponse<PageResult<MarketDataAlert>>>('/market-data/alerts', { params: { resolved, severity, canonicalSymbol, page, size } }))
+      : { items: [], total: 0, page, size };
+  },
+  async resolveAlert(id: EntityId): Promise<MarketDataAlert> {
+    return unwrap(client.patch<ApiResponse<MarketDataAlert>>(`/market-data/alerts/${id}/resolve`));
+  },
+};
+
+export const getProviderStatus = () => providerApi.getStatus();
+export const healthCheck = () => providerApi.healthCheck();
+export const fetchLatestQuotes = (symbols: string[], persist: boolean) => providerApi.fetchLatestQuotes(symbols, persist);
+export const getQuoteSnapshots = (canonicalSymbol?: string, dataSource?: string, page?: number, size?: number) =>
+  providerApi.getQuoteSnapshots(canonicalSymbol, dataSource, page, size);
+export const createDailyBarSync = (taskType: string, provider: string, scopeJson: string) =>
+  providerApi.createDailyBarSync(taskType, provider, scopeJson);
+export const getSyncTasks = (status?: string, provider?: string, page?: number, size?: number) =>
+  providerApi.getSyncTasks(status, provider, page, size);
+export const getAlerts = (resolved?: boolean, severity?: string, canonicalSymbol?: string, page?: number, size?: number) =>
+  providerApi.getAlerts(resolved, severity, canonicalSymbol, page, size);
+export const resolveAlert = (id: EntityId) => providerApi.resolveAlert(id);

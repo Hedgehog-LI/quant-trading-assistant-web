@@ -1,29 +1,81 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   Typography, Tabs, Table, Button, Space, Input, Select, DatePicker, Drawer, Form,
-  Upload, Alert, Empty, Tag, message, Popconfirm,
+  Upload, Alert, Empty, Tag, message, Popconfirm, Spin,
 } from 'antd';
 import { PlusOutlined, UploadOutlined, ReloadOutlined, DownloadOutlined, EditOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   getStocks, addStock, updateStock, deleteStock, getDailyBars, importDailyBars,
+  getProviderStatus, healthCheck, getSyncTasks,
+  getAlerts, resolveAlert, createDailyBarSync,
 } from '../features/market-data/api/marketDataApi';
-import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId } from '../shared/types/domain';
+import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
+  ProviderStatus, MarketDataSyncTask, MarketDataAlert } from '../shared/types/domain';
 
-const DISCLAIMER = '行情数据用于支撑指标与回测，不构成投资建议。';
+const DISCLAIMER = '行情数据用于支撑指标与回测，不构成投资建议。LongPort 仅作为只读行情源，不发起下单/撤单/账户/真实持仓查询。';
 
 export function MarketDataPage() {
   return (
     <div>
       <Typography.Title level={4} style={{ marginBottom: 8 }}>行情数据</Typography.Title>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
-        证券主数据与日 K 行情管理 · 数据来源：手工录入 / CSV 导入 · {DISCLAIMER}
+        证券主数据 · 日 K · 外部行情 · 同步任务 · 异常提醒 · {DISCLAIMER}
       </Typography.Text>
       <Alert type="info" showIcon title={DISCLAIMER} style={{ marginBottom: 16 }} />
       <Tabs items={[
+        { key: 'status', label: '行情状态', children: <ProviderStatusTab /> },
         { key: 'stocks', label: '证券主数据', children: <StocksTab /> },
         { key: 'bars', label: '日 K 数据', children: <BarsTab /> },
+        { key: 'sync', label: '历史数据同步', children: <SyncTasksTab /> },
+        { key: 'alerts', label: '异常提醒', children: <AlertsTab /> },
       ]} />
+    </div>
+  );
+}
+
+// ===== 行情状态 Tab =====
+function ProviderStatusTab() {
+  const [status, setStatus] = useState<ProviderStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try { const s = await getProviderStatus(); if (!cancelled) setStatus(s); }
+      catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : '加载失败'); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleHealthCheck = async () => {
+    setLoading(true);
+    try { setStatus(await healthCheck()); setError(null); }
+    catch (e) { setError(e instanceof Error ? e.message : '健康检查失败'); }
+    finally { setLoading(false); }
+  };
+
+  if (loading) return <Spin />;
+  if (error) return <Alert type="error" showIcon title="加载失败" description={error} action={<Button size="small" onClick={() => void handleHealthCheck()}>重试</Button>} />;
+  if (!status) return <Empty description="无状态数据" />;
+  return (
+    <div>
+      <Space direction="vertical" size="middle">
+        <Tag.CheckableTag checked={status.configured} style={{ padding: '4px 12px', borderRadius: 4, background: status.configured ? '#52c41a' : '#d9d9d9', color: '#fff' }}>
+          {status.configured ? '已配置' : '未配置'}
+        </Tag.CheckableTag>
+        <Typography.Text>Provider: {status.providerCode}</Typography.Text>
+        <Typography.Text>可达: {status.reachable ? '是' : '否'}</Typography.Text>
+        {status.lastError && <Alert type="warning" showIcon message={status.lastError} />}
+        {status.lastSuccessAt && <Typography.Text type="secondary">最近成功: {new Date(status.lastSuccessAt).toLocaleString('zh-CN')}</Typography.Text>}
+        <Button onClick={() => void handleHealthCheck()} icon={<ReloadOutlined />}>健康检查</Button>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          外部行情只写入行情快照，不会覆盖手工当前价。Mock 模式下此页面显示模拟状态。
+        </Typography.Text>
+      </Space>
     </div>
   );
 }
@@ -247,6 +299,146 @@ function BarsTab() {
             title: '抓取时间', dataIndex: 'fetchedAt', width: 160,
             render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—',
           }] : []),
+        ]}
+      />
+    </>
+  );
+}
+
+// ===== 历史数据同步 Tab =====
+function SyncTasksTab() {
+  const [data, setData] = useState<MarketDataSyncTask[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  const load = useCallback(async (p: number) => {
+    setLoading(true);
+    try {
+      const result = await getSyncTasks(undefined, undefined, p, 20);
+      setData(result.items); setTotal(result.total);
+    } catch (e) { setError(e instanceof Error ? e.message : '加载失败'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try { const r = await getSyncTasks(undefined, undefined, 1, 20); if (!cancelled) { setData(r.items); setTotal(r.total); } }
+      catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : '加载失败'); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleCreate = async () => {
+    const scopeJson = JSON.stringify({ canonicalSymbol: 'SH.600519', startDate: '2026-06-01', endDate: '2026-07-01', adjustType: 'NONE' });
+    try {
+      await createDailyBarSync('DAILY_BAR_SYNC', 'LONGPORT', scopeJson);
+      message.success('同步任务已创建并执行');
+      void load(page);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '创建同步任务失败');
+    }
+  };
+
+  if (error) return <Alert type="error" showIcon title="加载失败" description={error} action={<Button size="small" onClick={() => void load(page)}>重试</Button>} />;
+
+  const statusColor: Record<string, string> = { SUCCEEDED: 'green', FAILED: 'red', PARTIAL_FAILED: 'orange', RUNNING: 'blue', PENDING: 'default' };
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => void handleCreate()}>创建日 K 同步任务</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(page)}>刷新</Button>
+      </Space>
+      <Table<MarketDataSyncTask> size="small" rowKey="id" loading={loading}
+        dataSource={data}
+        pagination={{ current: page, pageSize: 20, total, onChange: (p) => { setPage(p); void load(p); } }}
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: <Empty description="暂无同步任务" /> }}
+        columns={[
+          { title: 'ID', dataIndex: 'id', width: 60 },
+          { title: '类型', dataIndex: 'taskType', width: 140 },
+          { title: 'Provider', dataIndex: 'provider', width: 100 },
+          { title: '状态', dataIndex: 'status', width: 120, render: (v) => <Tag color={statusColor[v] ?? 'default'}>{v}</Tag> },
+          { title: '新增', dataIndex: 'insertedCount', width: 60 },
+          { title: '更新', dataIndex: 'updatedCount', width: 60 },
+          { title: '跳过', dataIndex: 'skippedCount', width: 60 },
+          { title: '失败', dataIndex: 'failCount', width: 60 },
+          { title: '开始', dataIndex: 'startedAt', width: 160, render: (v?: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+          { title: '完成', dataIndex: 'finishedAt', width: 160, render: (v?: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+        ]}
+      />
+    </>
+  );
+}
+
+// ===== 异常提醒 Tab =====
+function AlertsTab() {
+  const [data, setData] = useState<MarketDataAlert[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  const load = useCallback(async (p: number) => {
+    setLoading(true);
+    try {
+      const result = await getAlerts(undefined, undefined, undefined, p, 20);
+      setData(result.items); setTotal(result.total);
+    } catch (e) { setError(e instanceof Error ? e.message : '加载失败'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try { const r = await getAlerts(undefined, undefined, undefined, 1, 20); if (!cancelled) { setData(r.items); setTotal(r.total); } }
+      catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : '加载失败'); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleResolve = async (id: EntityId) => {
+    try {
+      await resolveAlert(id);
+      message.success('已标记为已处理');
+      void load(page);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '操作失败');
+    }
+  };
+
+  if (error) return <Alert type="error" showIcon title="加载失败" description={error} action={<Button size="small" onClick={() => void load(page)}>重试</Button>} />;
+
+  const severityColor: Record<string, string> = { HIGH: 'red', WARN: 'orange', INFO: 'blue' };
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(page)}>刷新</Button>
+      </Space>
+      <Table<MarketDataAlert> size="small" rowKey="id" loading={loading}
+        dataSource={data}
+        pagination={{ current: page, pageSize: 20, total, onChange: (p) => { setPage(p); void load(p); } }}
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: <Empty description="暂无异常提醒" /> }}
+        columns={[
+          { title: 'ID', dataIndex: 'id', width: 60 },
+          { title: '级别', dataIndex: 'severity', width: 80, render: (v) => <Tag color={severityColor[v] ?? 'default'}>{v}</Tag> },
+          { title: '类型', dataIndex: 'alertType', width: 200 },
+          { title: '证券', dataIndex: 'canonicalSymbol', width: 140, render: (v?: string) => v ?? '—' },
+          { title: '说明', dataIndex: 'message' },
+          { title: '时间', dataIndex: 'createdAt', width: 160, render: (v: string) => new Date(v).toLocaleString('zh-CN') },
+          { title: '已处理', dataIndex: 'resolved', width: 80, render: (v: boolean) => v ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
+          { title: '操作', key: 'action', width: 80, render: (_, r) => !r.resolved ? (
+            <Popconfirm title="确认标记为已处理？" onConfirm={() => void handleResolve(r.id)}>
+              <Button size="small">处理</Button>
+            </Popconfirm>
+          ) : null },
         ]}
       />
     </>

@@ -286,3 +286,61 @@ export interface DailyBarImportResult {
 
 export type StockMarket = 'SH' | 'SZ' | 'BJ';
 export type AdjustType = 'NONE' | 'QF' | 'HF';
+
+export interface ProviderStatus {
+  providerCode: string;
+  configured: boolean;
+  reachable: boolean;
+  lastError?: string | null;
+  lastSuccessAt?: string | null;
+}
+
+export interface StockQuoteSnapshot {
+  id: EntityId;
+  canonicalSymbol: string;
+  quoteTime: string;
+  currentPrice: number;
+  openPrice?: number;
+  highPrice?: number;
+  lowPrice?: number;
+  preClosePrice?: number;
+  volume: number;
+  amount: number;
+  tradeStatus?: string;
+  dataSource: string;
+  fetchedAt: string;
+}
+
+export interface MarketDataSyncTask {
+  id: EntityId;
+  taskType: string;
+  provider: string;
+  scopeJson: string;
+  status: string;
+  totalCount?: number;
+  successCount?: number;
+  failCount?: number;
+  insertedCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
+  startedAt?: string;
+  finishedAt?: string;
+  lastErrorCode?: string;
+  errorSummaryJson?: string;
+  createdAt: string;
+}
+
+export interface MarketDataAlert {
+  id: EntityId;
+  alertType: string;
+  severity: string;
+  canonicalSymbol?: string;
+  quoteTime?: string;
+  tradeDate?: string;
+  provider: string;
+  taskId?: number;
+  message: string;
+  triggerValueJson?: string;
+  resolved: boolean;
+  createdAt: string;
+}

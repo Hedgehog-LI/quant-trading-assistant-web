@@ -52,10 +52,10 @@ describe('buildStatusData', () => {
     expect(dailyBar?.maturity).toBe('M4');
   });
 
-  it('market-data-provider 保持 TODO/M1', () => {
+  it('market-data-provider 为 IN_PROGRESS（provider 抽象已实现，SDK 待接入）', () => {
     const provider = flattenBuildNodes(buildStatusTree).find((n) => n.id === 'market-data-provider');
-    expect(provider?.status).toBe('TODO');
-    expect(provider?.maturity).toBe('M1');
+    expect(provider?.status).toBe('IN_PROGRESS');
+    expect(provider?.maturity).toBe('M2');
   });
 
   it('daily-bar-import 不重复出现在 quant-analysis', () => {
@@ -107,10 +107,10 @@ describe('buildStatusData', () => {
   });
 
   it('filters tree by status while keeping matching parent paths', () => {
-    const filtered = filterBuildTree(buildStatusTree, { status: 'TODO' });
+    const filtered = filterBuildTree(buildStatusTree, { status: 'IN_PROGRESS' });
     const nodes = flattenBuildNodes(filtered);
     expect(nodes.some((n) => n.id === 'market-data-foundation')).toBe(true);
-    expect(nodes.every((n) => n.status === 'TODO' || (n.children?.length ?? 0) > 0)).toBe(true);
+    expect(nodes.every((n) => n.status === 'IN_PROGRESS' || (n.children?.length ?? 0) > 0)).toBe(true);
   });
 
   it('has summary and capability sections', () => {
