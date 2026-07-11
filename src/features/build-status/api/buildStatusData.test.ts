@@ -58,6 +58,20 @@ describe('buildStatusData', () => {
     expect(provider?.maturity).toBe('M2');
   });
 
+  it('market-data-provider 含 5 个子节点', () => {
+    // market-data-provider 嵌套在 market-data-foundation 下
+    const foundation = buildStatusTree.find((n) => n.id === 'market-data-foundation');
+    const provider = (foundation?.children ?? []).find((c) => c.id === 'market-data-provider');
+    const childIds = (provider?.children ?? []).map((c) => c.id);
+    expect(childIds).toEqual([
+      'longport-config-health',
+      'provider-symbol-mapping',
+      'longport-quote-snapshot',
+      'longport-history-sync',
+      'market-data-alerts',
+    ]);
+  });
+
   it('daily-bar-import 不重复出现在 quant-analysis', () => {
     const qa = buildStatusTree.find((n) => n.id === 'quant-analysis');
     const childIds = (qa?.children ?? []).map((c) => c.id);
