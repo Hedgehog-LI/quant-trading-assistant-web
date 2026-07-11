@@ -443,7 +443,7 @@ export const buildStatusTree: BuildStatusNode[] = [
           'Provider 抽象(只读) + DisabledMarketDataProvider + FakeMarketDataProvider + LongPortSymbolMapper',
           'V7 migration: stock_quote_snapshot + market_data_sync_task + market_data_alert',
           'V8 migration: parent_task_id 支持失败重试历史留痕',
-          '9 API 端点 + 失败独立事务留痕 + 幂等重试(FAILED 保留历史，parentTaskId 链接)',
+          '9 API 端点 + 失败独立事务留痕 + 连续重试保留历史已验收（parentTaskId 链路 + 每次唯一 idempotencyKey）',
         ],
         nextActions: ['接入 LongPort SDK 真实凭据', 'SDK quote/candlestick 适配验证'],
         backendState: 'Provider facade + 3 表 + 9 API + 独立事务留痕 + 幂等重试已完成；真实 LongPort SDK 未接入',
