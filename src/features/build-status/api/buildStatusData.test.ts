@@ -52,10 +52,10 @@ describe('buildStatusData', () => {
     expect(dailyBar?.maturity).toBe('M4');
   });
 
-  it('market-data-provider 为 IN_PROGRESS（provider 抽象已实现，SDK 待接入）', () => {
+  it('market-data-provider 为 DONE/M4（LongPort SDK 已接入并真实外联验收）', () => {
     const provider = flattenBuildNodes(buildStatusTree).find((n) => n.id === 'market-data-provider');
-    expect(provider?.status).toBe('IN_PROGRESS');
-    expect(provider?.maturity).toBe('M2');
+    expect(provider?.status).toBe('DONE');
+    expect(provider?.maturity).toBe('M4');
   });
 
   it('market-data-provider 含 5 个子节点', () => {

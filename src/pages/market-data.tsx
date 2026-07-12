@@ -14,6 +14,61 @@ import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
   ProviderStatus, StockQuoteSnapshot, MarketDataSyncTask, MarketDataAlert } from '../shared/types/domain';
 
 const DISCLAIMER = '行情数据用于支撑指标与回测，不构成投资建议。LongPort 仅作为只读行情源，不发起下单/撤单/账户/真实持仓查询。';
+const LONGPORT_SDK_MISSING_TEXT = 'LongPort Java SDK 未安装';
+const LONGPORT_CREDENTIALS_MISSING_TEXT = 'LongPort 凭据未配置';
+const MAX_LONGPORT_QUOTE_SYMBOLS = 500;
+const CANONICAL_SYMBOL_PATTERN = /^(SH|SZ|BJ)\.\d{4,6}$/;
+
+function providerStatusTitle(status: ProviderStatus): string {
+  if (status.configured && status.reachable) return 'LongPort provider 可用';
+  if (status.lastError?.includes(LONGPORT_SDK_MISSING_TEXT)) return '后端已启用，SDK 未安装';
+  if (status.lastError?.includes(LONGPORT_CREDENTIALS_MISSING_TEXT)) return '后端已启用，凭据未配置';
+  if (!status.configured) return 'LongPort provider 未就绪';
+  return 'LongPort provider 不可达';
+}
+
+function providerStatusAlertType(status: ProviderStatus): 'success' | 'warning' | 'error' {
+  if (status.configured && status.reachable) return 'success';
+  if (status.configured && !status.reachable) return 'error';
+  return 'warning';
+}
+
+function normalizeCanonicalSymbol(symbol: string): string {
+  const normalized = symbol.trim().toUpperCase();
+  if (!CANONICAL_SYMBOL_PATTERN.test(normalized)) {
+    throw new Error(`证券代码格式不合法：${symbol || '空值'}。请使用 SH.600519 / SZ.000001 / BJ.430047`);
+  }
+  return normalized;
+}
+
+function parseCanonicalSymbols(input: string): string[] {
+  const rawSymbols = input.split(/[,\n\s]+/).map(s => s.trim()).filter(Boolean);
+  if (rawSymbols.length === 0) {
+    throw new Error('请输入至少一个证券代码');
+  }
+  const invalidSymbols = rawSymbols
+    .map(s => s.toUpperCase())
+    .filter(s => !CANONICAL_SYMBOL_PATTERN.test(s));
+  if (invalidSymbols.length > 0) {
+    throw new Error(`证券代码格式不合法：${invalidSymbols.slice(0, 5).join('、')}`);
+  }
+  const uniqueSymbols = Array.from(new Set(rawSymbols.map(s => s.toUpperCase())));
+  if (uniqueSymbols.length > MAX_LONGPORT_QUOTE_SYMBOLS) {
+    throw new Error(`单次最多支持 ${MAX_LONGPORT_QUOTE_SYMBOLS} 个证券代码`);
+  }
+  return uniqueSymbols;
+}
+
+async function ensureLongPortReady(): Promise<boolean> {
+  const status = await getProviderStatus();
+  if (status.configured && status.reachable) {
+    return true;
+  }
+  const title = providerStatusTitle(status);
+  const reason = status.lastError ? `：${status.lastError}` : '';
+  message.warning(`${title}${reason}`);
+  return false;
+}
 
 export function MarketDataPage() {
   return (
@@ -68,10 +123,17 @@ function QuoteSnapshotsTab() {
   }, []);
 
   const handleFetchLatest = async () => {
-    const symbols = fetchSymbols.split(/[,\n\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-    if (symbols.length === 0) { message.warning('请输入至少一个证券代码'); return; }
+    let symbols: string[];
+    try {
+      symbols = parseCanonicalSymbols(fetchSymbols);
+    } catch (e) {
+      message.warning(e instanceof Error ? e.message : '证券代码格式不合法');
+      return;
+    }
     setFetching(true);
     try {
+      const providerReady = await ensureLongPortReady();
+      if (!providerReady) return;
       const result = await fetchLatestQuotes(symbols, fetchPersist);
       if (result.length === 0) {
         message.info('未获取到行情（可能 provider 未配置或无数据）');
@@ -161,6 +223,12 @@ function ProviderStatusTab() {
   return (
     <div>
       <Space direction="vertical" size="middle">
+        <Alert
+          type={providerStatusAlertType(status)}
+          showIcon
+          message={providerStatusTitle(status)}
+          description={status.lastError ?? 'LongPort 当前可用于只读行情拉取。'}
+        />
         <Tag.CheckableTag checked={status.configured} style={{ padding: '4px 12px', borderRadius: 4, background: status.configured ? '#52c41a' : '#d9d9d9', color: '#fff' }}>
           {status.configured ? '已配置' : '未配置'}
         </Tag.CheckableTag>
@@ -413,6 +481,7 @@ function SyncTasksTab() {
   const [syncStartDate, setSyncStartDate] = useState<string | undefined>(undefined);
   const [syncEndDate, setSyncEndDate] = useState<string | undefined>(undefined);
   const [syncAdjust, setSyncAdjust] = useState<string>('NONE');
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -435,15 +504,32 @@ function SyncTasksTab() {
   }, []);
 
   const handleCreate = async () => {
-    if (!syncSymbol.trim()) { message.warning('请输入证券代码'); return; }
+    let canonicalSymbol: string;
     try {
-      await createDailyBarSync('DAILY_BAR_SYNC', 'LONGPORT', syncSymbol.trim().toUpperCase(),
+      canonicalSymbol = normalizeCanonicalSymbol(syncSymbol);
+    } catch (e) {
+      message.warning(e instanceof Error ? e.message : '证券代码格式不合法');
+      return;
+    }
+    if (syncStartDate && syncEndDate && syncStartDate > syncEndDate) {
+      message.warning('起始日期不能晚于截止日期');
+      return;
+    }
+    if (syncAdjust === 'HF') {
+      message.warning('LongPort 当前暂不支持后复权同步，请选择不复权或前复权');
+      return;
+    }
+    setSyncing(true);
+    try {
+      const providerReady = await ensureLongPortReady();
+      if (!providerReady) return;
+      await createDailyBarSync('DAILY_BAR_SYNC', 'LONGPORT', canonicalSymbol,
         syncStartDate || undefined, syncEndDate || undefined, syncAdjust || undefined);
       message.success('同步任务已创建并执行。完成后可到"日 K 数据"筛选 LONGPORT 查看结果');
       void load(page);
     } catch (e) {
       message.error(e instanceof Error ? e.message : '创建同步任务失败');
-    }
+    } finally { setSyncing(false); }
   };
 
   if (error) return <Alert type="error" showIcon title="加载失败" description={error} action={<Button size="small" onClick={() => void load(page)}>重试</Button>} />;
@@ -460,8 +546,8 @@ function SyncTasksTab() {
           <DatePicker placeholder="截止日期" value={syncEndDate ? dayjs(syncEndDate) : null}
             onChange={(d) => setSyncEndDate(d?.format('YYYY-MM-DD'))} />
           <Select value={syncAdjust} onChange={setSyncAdjust} style={{ width: 120 }}
-            options={[{ value: 'NONE', label: '不复权' }, { value: 'QF', label: '前复权' }, { value: 'HF', label: '后复权' }]} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => void handleCreate()}>创建同步</Button>
+            options={[{ value: 'NONE', label: '不复权' }, { value: 'QF', label: '前复权' }, { value: 'HF', label: '后复权', disabled: true }]} />
+          <Button type="primary" loading={syncing} icon={<PlusOutlined />} onClick={() => void handleCreate()}>创建同步</Button>
           <Button icon={<ReloadOutlined />} onClick={() => void load(page)}>刷新</Button>
         </Space>
       </Space>
