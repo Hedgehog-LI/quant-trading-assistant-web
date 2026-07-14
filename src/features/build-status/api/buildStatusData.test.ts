@@ -58,6 +58,17 @@ describe('buildStatusData', () => {
     expect(provider?.maturity).toBe('M4');
   });
 
+  it('LongPort 最新价和历史日 K 子节点已从真实外联待验收更新为 DONE', () => {
+    const nodes = flattenBuildNodes(buildStatusTree);
+    for (const id of ['longport-quote-snapshot', 'longport-history-sync']) {
+      const node = nodes.find((n) => n.id === id);
+      expect(node?.status).toBe('DONE');
+      expect(node?.maturity).toBe('M4');
+      expect(node?.currentEvidence.join(' ')).toContain('真实外联验收');
+      expect(node?.nextActions.join(' ')).not.toContain('真实 LongPort SDK');
+    }
+  });
+
   it('market-data-provider 含 5 个子节点', () => {
     // market-data-provider 嵌套在 market-data-foundation 下
     const foundation = buildStatusTree.find((n) => n.id === 'market-data-foundation');
@@ -84,6 +95,23 @@ describe('buildStatusData', () => {
     expect(ai?.priority).toBe('P2');
   });
 
+  it('存在 P1.2 行情工作台、采集任务、分钟线和异动大屏节点', () => {
+    const nodes = flattenBuildNodes(buildStatusTree);
+    const expected = [
+      'market-ops-workbench',
+      'market-collection-jobs',
+      'minute-bar-asset',
+      'market-movement-dashboard',
+      'longport-hardening',
+    ];
+    for (const id of expected) {
+      const node = nodes.find((n) => n.id === id);
+      expect(node, `${id} 应存在`).toBeDefined();
+      expect(node?.priority).toBe('P1');
+    }
+    expect(nodes.find((n) => n.id === 'multi-source-provider-research')?.priority).toBe('P2');
+  });
+
   it('不含过期下一步字符串', () => {
     const all = flattenBuildNodes(buildStatusTree);
     const outdated = [
@@ -93,6 +121,8 @@ describe('buildStatusData', () => {
       '和持仓快照做差异核对',
       '设计快照差异对比',
       '和交易记录建立更强关联',
+      '真实 LongPort SDK 获取行情验证',
+      '真实 LongPort SDK 获取历史 K 线验证',
     ];
     for (const node of all) {
       for (const action of node.nextActions) {
@@ -118,6 +148,8 @@ describe('buildStatusData', () => {
   it('summary cards 当前最优先含"行情"字样', () => {
     const top = buildSummaryCards.find((c) => c.title === '当前最优先');
     expect(top?.value).toContain('行情');
+    expect(top?.value).toContain('工作台');
+    expect(top?.status).toBe('IN_PROGRESS');
   });
 
   it('filters tree by status while keeping matching parent paths', () => {

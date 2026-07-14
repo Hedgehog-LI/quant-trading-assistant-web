@@ -11,6 +11,7 @@ import {
   SettingOutlined,
   ProjectOutlined,
   LineChartOutlined,
+  FundProjectionScreenOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAppStore } from '../shared/stores/app-store';
@@ -27,6 +28,8 @@ const menuItems = [
   { key: '/position-snapshots', icon: <PieChartOutlined />, label: '持仓快照' },
   { key: '/review', icon: <FormOutlined />, label: '盘后复盘' },
   { key: '/market-data', icon: <LineChartOutlined />, label: '行情数据' },
+  { key: '/market-workspace', icon: <FundProjectionScreenOutlined />, label: '行情工作台' },
+  { key: '/market-segments', icon: <FundProjectionScreenOutlined />, label: '板块管理' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
   { key: '/build-status', icon: <ProjectOutlined />, label: '建设看板' },
 ];

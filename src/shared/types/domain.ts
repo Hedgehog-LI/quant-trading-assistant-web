@@ -344,3 +344,135 @@ export interface MarketDataAlert {
   resolved: boolean;
   createdAt: string;
 }
+
+// ==================== P1.2 行情工作台 ====================
+
+export type IntervalType = '1M' | '5M' | '15M' | '30M' | '60M' | '1D';
+export type QualityStatus = 'VALID' | 'SUSPECT' | 'REJECTED';
+export type PlanTriggerType = 'MANUAL' | 'SCHEDULED' | 'INTRADAY';
+
+export interface StockMinuteBar {
+  id: EntityId;
+  canonicalSymbol: string;
+  tradeDate: string;
+  barStartTime: string;
+  barEndTime: string;
+  intervalType: string;
+  sessionType?: string;
+  openPrice: number;
+  highPrice: number;
+  lowPrice: number;
+  closePrice: number;
+  volume: number;
+  amount: number;
+  turnoverRate?: number;
+  adjustType: string;
+  dataSource: string;
+  qualityStatus: string;
+  fetchedAt: string;
+}
+
+export interface MarketTradingSession {
+  id: EntityId;
+  marketCode: string;
+  sessionType: string;
+  sessionName: string;
+  startTime: string;
+  endTime: string;
+  isAuction: boolean;
+  sortOrder: number;
+  enabled: boolean;
+}
+
+export interface MarketDataSyncPlan {
+  id: EntityId;
+  planName: string;
+  taskType: string;
+  provider: string;
+  scopeJson: string;
+  intervalType?: string;
+  adjustType: string;
+  triggerType: string;
+  cronExpr?: string;
+  includeAuction: boolean;
+  collectFrequency?: string;
+  enabled: boolean;
+  description?: string;
+  lastRunAt?: string;
+  lastTaskId?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketDataSyncTaskItem {
+  id: EntityId;
+  taskId: number;
+  planId?: number;
+  canonicalSymbol: string;
+  scopeDetail?: string;
+  status: string;
+  rowCount?: number;
+  insertedCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt: string;
+}
+
+export interface MarketDataWatermark {
+  id: EntityId;
+  canonicalSymbol: string;
+  dataSource: string;
+  intervalType: string;
+  adjustType: string;
+  lastSuccessTime: string;
+  lastTradeDate?: string;
+  lastBarTime?: string;
+  totalRows: number;
+  updatedAt: string;
+}
+
+export interface WorkbenchOverview {
+  providerStatus?: ProviderStatus;
+  latestSyncAt?: string;
+  totalSymbols: number;
+  totalMinuteBars: number;
+  totalDailyBars: number;
+  unresolvedHighAlerts: number;
+  unresolvedWarnAlerts: number;
+  failedTasksToday: number;
+  recentWatermarks?: MarketDataWatermark[];
+  recentAlerts?: MarketDataAlert[];
+  tradingSessions?: MarketTradingSession[];
+}
+
+export interface MinuteBarUpsertResult {
+  result: string;
+  qualityStatus: string;
+}
+
+// ==================== P1.3 板块 ====================
+
+export interface MarketSegment {
+  id: EntityId;
+  segmentCode: string;
+  segmentName: string;
+  segmentType: string;
+  description?: string;
+  enabled: boolean;
+  memberCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketSegmentMember {
+  id: EntityId;
+  segmentId: number;
+  canonicalSymbol: string;
+  sortOrder?: number;
+  remark?: string;
+  createdAt: string;
+}
