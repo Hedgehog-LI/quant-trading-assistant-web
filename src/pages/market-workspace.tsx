@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Col, Drawer, Form, Input, message, Popconfirm, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import { ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import { getSettings } from '../features/settings/api/settingsApi';
 import {
   getWorkbenchOverview, listSyncPlans, createSyncPlan, toggleSyncPlan, runSyncPlan,
+  listTaskItems, reconcileTask,
   listMinuteBars, listWatermarks, getTradingSessions,
   type PlanInput, type MinuteBarFilter, type WatermarkFilter,
 } from '../features/market-data/api/workbenchApi';
 import type {
-  WorkbenchOverview, MarketDataSyncPlan, StockMinuteBar,
+  WorkbenchOverview, MarketDataSyncPlan, MarketDataSyncTaskItem,
+  StockMinuteBar,
   MarketDataWatermark, MarketTradingSession, EntityId,
 } from '../shared/types/domain';
+import { formatDateTime } from '../shared/utils/date';
 
 interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
 
@@ -136,6 +139,7 @@ function PlansTab() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [itemsDrawerPlan, setItemsDrawerPlan] = useState<MarketDataSyncPlan | null>(null);
   const [form] = Form.useForm<PlanInput>();
 
   const load = useCallback(async (p: number) => {
@@ -218,10 +222,13 @@ function PlansTab() {
           },
           { title: '最后运行', dataIndex: 'lastRunAt', width: 160 },
           {
-            title: '操作', width: 160,
+            title: '操作', width: 220,
             render: (_, r) => (
               <Space>
                 <Button size="small" type="link" onClick={() => handleRun(r.id)}>执行</Button>
+                {r.lastTaskId != null && (
+                  <Button size="small" type="link" onClick={() => setItemsDrawerPlan(r)}>任务明细</Button>
+                )}
                 <Popconfirm title={r.enabled ? '确定停用？' : '确定启用？'} onConfirm={() => handleToggle(r.id, !r.enabled)}>
                   <Button size="small" type="link">{r.enabled ? '停用' : '启用'}</Button>
                 </Popconfirm>
@@ -261,7 +268,113 @@ function PlansTab() {
           <Form.Item name="description" label="描述"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Drawer>
+      <TaskItemsDrawer plan={itemsDrawerPlan} onClose={() => setItemsDrawerPlan(null)} />
     </Space>
+  );
+}
+
+// ==================== 任务明细 Drawer ====================
+
+export function TaskItemsDrawer({ plan, onClose }: { plan: MarketDataSyncPlan | null; onClose: () => void }) {
+  const taskKey = plan?.lastTaskId == null ? 'closed' : String(plan.lastTaskId);
+  return <TaskItemsDrawerContent key={taskKey} plan={plan} onClose={onClose} />;
+}
+
+function TaskItemsDrawerContent({ plan, onClose }: { plan: MarketDataSyncPlan | null; onClose: () => void }) {
+  const [items, setItems] = useState<MarketDataSyncTaskItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [itemPage, setItemPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
+  const reqIdRef = useRef(0);
+  const activeRef = useRef(true);
+
+  useEffect(() => () => {
+    activeRef.current = false;
+    reqIdRef.current += 1;
+  }, []);
+
+  const loadItems = useCallback(async (taskId: EntityId, p: number) => {
+    if (!activeRef.current) return;
+    const myReqId = ++reqIdRef.current;
+    setLoading(true); setError(null);
+    try {
+      const result = await listTaskItems(taskId, undefined, p, 20);
+      if (!activeRef.current || myReqId !== reqIdRef.current) return;
+      setItems(result.items);
+      setTotal(result.total);
+    } catch (e) {
+      if (!activeRef.current || myReqId !== reqIdRef.current) return;
+      setError((e as Error).message);
+    } finally {
+      if (activeRef.current && myReqId === reqIdRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const taskId = plan?.lastTaskId;
+    if (taskId == null) return;
+    const scheduledReqId = ++reqIdRef.current;
+    void Promise.resolve().then(() => {
+      if (activeRef.current && scheduledReqId === reqIdRef.current) {
+        void loadItems(taskId, itemPage);
+      }
+    });
+    return () => {
+      reqIdRef.current += 1;
+    };
+  }, [itemPage, plan?.lastTaskId, loadItems]);
+
+  const handleReconcile = async () => {
+    if (!plan?.lastTaskId || reconciling) return;
+    setReconciling(true); setError(null);
+    try {
+      await reconcileTask(plan.lastTaskId);
+      if (!activeRef.current) return;
+      message.success('收敛完成');
+      await loadItems(plan.lastTaskId, itemPage);
+    } catch (e) {
+      if (activeRef.current) setError(`收敛失败: ${(e as Error).message}`);
+    } finally {
+      if (activeRef.current) setReconciling(false);
+    }
+  };
+
+  return (
+    <Drawer title={plan ? `任务明细：${plan.planName}` : ''} open={!!plan} onClose={onClose} width={800}
+      extra={plan?.lastTaskId != null ? (
+        <Button size="small" onClick={handleReconcile} loading={reconciling} disabled={reconciling}>
+          刷新/收敛
+        </Button>
+      ) : undefined}>
+      {error && (
+        <Alert type="error" message={error} style={{ marginBottom: 16 }}
+          action={<Button size="small" onClick={() => plan?.lastTaskId && loadItems(plan.lastTaskId, itemPage)}>重试</Button>} />
+      )}
+      {plan?.lastTaskId != null ? (
+        <Table<MarketDataSyncTaskItem>
+          size="small" rowKey="id" loading={loading}
+          dataSource={items}
+          pagination={{ current: itemPage, pageSize: 20, total, onChange: setItemPage }}
+          scroll={{ x: 1200 }}
+          columns={[
+            { title: '标的', dataIndex: 'canonicalSymbol', width: 120 },
+            { title: '状态', dataIndex: 'status', width: 100, render: (s: string) => <Tag color={s === 'SUCCEEDED' ? 'green' : s === 'FAILED' ? 'red' : s === 'PARTIAL_FAILED' ? 'orange' : 'blue'}>{s}</Tag> },
+            { title: '行数', dataIndex: 'rowCount', width: 70 },
+            { title: '新增', dataIndex: 'insertedCount', width: 60 },
+            { title: '更新', dataIndex: 'updatedCount', width: 60 },
+            { title: '跳过', dataIndex: 'skippedCount', width: 60 },
+            { title: '子任务ID', dataIndex: 'subTaskId', width: 90 },
+            { title: '开始', dataIndex: 'startedAt', width: 150, render: (v?: string) => v ? formatDateTime(v) : '-' },
+            { title: '结束', dataIndex: 'finishedAt', width: 150, render: (v?: string) => v ? formatDateTime(v) : '-' },
+            { title: '错误', dataIndex: 'errorMessage', ellipsis: true },
+          ]}
+        />
+      ) : (
+        <Text type="secondary">该计划尚未执行</Text>
+      )}
+    </Drawer>
   );
 }
 

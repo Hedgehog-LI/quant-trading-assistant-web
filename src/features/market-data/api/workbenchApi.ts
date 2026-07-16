@@ -4,6 +4,7 @@ import { getSettings } from '../../settings/api/settingsApi';
 import type {
   WorkbenchOverview,
   MarketDataSyncPlan,
+  MarketDataSyncTask,
   MarketDataSyncTaskItem,
   StockMinuteBar,
   MarketTradingSession,
@@ -34,6 +35,8 @@ const remoteApi = {
     unwrap<MarketDataSyncPlan>(client.post(`${BASE}/sync-plans/${id}/run`)),
   listTaskItems: (taskId: EntityId, status?: string, page = 1, size = 20) =>
     unwrap<PageResult<MarketDataSyncTaskItem>>(client.get(`${BASE}/sync-tasks/${taskId}/items`, { params: { status, page, size } })),
+  reconcileTask: (taskId: EntityId) =>
+    unwrap<MarketDataSyncTask>(client.post(`${BASE}/sync-tasks/${taskId}/reconcile`)),
   listMinuteBars: (filter: MinuteBarFilter) =>
     unwrap<PageResult<StockMinuteBar>>(client.get(`${BASE}/minute-bars`, { params: filter })),
   upsertMinuteBar: (data: MinuteBarInput) =>
@@ -82,6 +85,7 @@ const mockApi = {
   togglePlan: async (_id: EntityId, enabled: boolean): Promise<MarketDataSyncPlan> => ({ enabled } as MarketDataSyncPlan),
   runPlan: async (_id: EntityId): Promise<MarketDataSyncPlan> => ({ lastRunAt: new Date().toISOString(), lastTaskId: Date.now() } as MarketDataSyncPlan),
   listTaskItems: async (_taskId: EntityId, _status?: string): Promise<PageResult<MarketDataSyncTaskItem>> => emptyPage(),
+  reconcileTask: async (taskId: EntityId): Promise<MarketDataSyncTask> => ({ id: Number(taskId), taskType: 'DAILY_BAR_BACKFILL', provider: 'LONGPORT', scopeJson: '{}', status: 'SUCCEEDED', createdAt: new Date().toISOString() } as MarketDataSyncTask),
   listMinuteBars: async (_filter: MinuteBarFilter): Promise<PageResult<StockMinuteBar>> => emptyPage(),
   upsertMinuteBar: async (_data: MinuteBarInput): Promise<MinuteBarUpsertResult> => ({ result: 'INSERTED', qualityStatus: 'VALID' }),
   getTradingSessions: async (): Promise<MarketTradingSession[]> => (await mockApi.getOverview()).tradingSessions!,
@@ -122,6 +126,9 @@ export function runSyncPlan(id: EntityId) {
 }
 export function listTaskItems(taskId: EntityId, status?: string, page?: number, size?: number) {
   return pick(mockApi.listTaskItems, remoteApi.listTaskItems)(taskId, status, page, size);
+}
+export function reconcileTask(taskId: EntityId) {
+  return pick(mockApi.reconcileTask, remoteApi.reconcileTask)(taskId);
 }
 export function listMinuteBars(filter: MinuteBarFilter) {
   return pick(mockApi.listMinuteBars, remoteApi.listMinuteBars)(filter);

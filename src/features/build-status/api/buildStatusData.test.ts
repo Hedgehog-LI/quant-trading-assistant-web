@@ -98,7 +98,7 @@ describe('buildStatusData', () => {
   it('存在 P1.2 行情工作台、采集任务、分钟线和异动大屏节点', () => {
     const nodes = flattenBuildNodes(buildStatusTree);
     const expected = [
-      'market-ops-workbench',
+      'market-workspace',
       'market-collection-jobs',
       'minute-bar-asset',
       'market-movement-dashboard',
@@ -110,6 +110,24 @@ describe('buildStatusData', () => {
       expect(node?.priority).toBe('P1');
     }
     expect(nodes.find((n) => n.id === 'multi-source-provider-research')?.priority).toBe('P2');
+  });
+
+  it('能力矩阵反映 P1.2/P1.3 当前真实边界', () => {
+    const nodes = flattenBuildNodes(buildStatusTree);
+    const workspace = nodes.find((n) => n.id === 'market-workspace');
+    const collection = nodes.find((n) => n.id === 'market-collection-jobs');
+    const minuteBar = nodes.find((n) => n.id === 'minute-bar-asset');
+    const segment = nodes.find((n) => n.id === 'market-segment');
+
+    expect(workspace?.status).toBe('DONE');
+    expect(workspace?.currentEvidence.join(' ')).toContain('任务明细 Drawer');
+    expect(collection?.status).toBe('IN_PROGRESS');
+    expect(collection?.currentEvidence.join(' ')).toContain('sub_task_id');
+    expect(collection?.nextActions.join(' ')).toContain('分钟 K');
+    expect(minuteBar?.status).toBe('IN_PROGRESS');
+    expect(minuteBar?.risks.join(' ')).toContain('无法真实拉取分钟K');
+    expect(segment?.status).toBe('DONE');
+    expect(segment?.currentEvidence.join(' ')).toContain('8 项真实行为测试');
   });
 
   it('不含过期下一步字符串', () => {

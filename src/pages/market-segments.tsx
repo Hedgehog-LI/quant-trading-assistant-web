@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Drawer, Form, Input, message, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { PlusOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons';
 import {
@@ -33,6 +33,8 @@ function SegmentListTab() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [membersDrawer, setMembersDrawer] = useState<MarketSegment | null>(null);
   const [form] = Form.useForm<SegmentInput>();
 
@@ -45,16 +47,59 @@ function SegmentListTab() {
     finally { setLoading(false); }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true); setError(null);
+      try {
+        const filter: SegmentFilter = { page, size: 20 };
+        const r = await listSegments(filter);
+        if (!cancelled) setData(r);
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [page]);
+
   const handleCreate = async () => {
-    const values = await form.validateFields();
-    await createSegment(values);
-    message.success('板块已创建');
-    setDrawerOpen(false); form.resetFields(); load(page);
+    try {
+      const values = await form.validateFields();
+      setCreating(true);
+      await createSegment(values);
+      message.success('板块已创建');
+      setDrawerOpen(false); form.resetFields(); load(page);
+    } catch (e) {
+      // form.validateFields 的错误由 Ant Design 内部处理；API 错误显示 message
+      if (e instanceof Error && e.message) {
+        message.error(`创建失败: ${e.message}`);
+      }
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleDelete = async (id: EntityId) => {
-    await deleteSegment(id);
-    message.success('已删除'); load(page);
+    try {
+      setDeletingId(String(id));
+      await deleteSegment(id);
+      message.success('已删除');
+      // 删除当前页最后一条后，如页码超出总页数，回到有效页
+      const newTotal = data.total - 1;
+      const maxPage = Math.max(1, Math.ceil(newTotal / data.size));
+      if (page > maxPage) {
+        setPage(maxPage); // useEffect[page] 会自动加载
+      } else {
+        load(page);
+      }
+    } catch (e) {
+      message.error(`删除失败: ${(e as Error).message}`);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (error) return <Alert type="error" message={error} action={<Button onClick={() => load(page)}>重试</Button>} />;
@@ -78,8 +123,9 @@ function SegmentListTab() {
             render: (_, r) => (
               <Space>
                 <Button size="small" type="link" icon={<TeamOutlined />} onClick={() => setMembersDrawer(r)}>成员</Button>
-                <Popconfirm title="确定删除该板块？" onConfirm={() => handleDelete(r.id)}>
-                  <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
+                <Popconfirm title="确定删除该板块？" onConfirm={() => handleDelete(r.id)} disabled={deletingId === String(r.id)}>
+                  <Button size="small" type="link" danger icon={<DeleteOutlined />}
+                    loading={deletingId === String(r.id)}>删除</Button>
                 </Popconfirm>
               </Space>
             ),
@@ -87,7 +133,7 @@ function SegmentListTab() {
         ]}
       />
       <Drawer title="新建板块" open={drawerOpen} onClose={() => setDrawerOpen(false)} width={420}
-        extra={<Space><Button onClick={() => setDrawerOpen(false)}>取消</Button><Button type="primary" onClick={handleCreate}>创建</Button></Space>}>
+        extra={<Space><Button onClick={() => setDrawerOpen(false)} disabled={creating}>取消</Button><Button type="primary" onClick={handleCreate} loading={creating}>创建</Button></Space>}>
         <Form form={form} layout="vertical" initialValues={{ segmentType: 'CUSTOM', enabled: true }}>
           <Form.Item name="segmentName" label="板块名称" rules={[{ required: true }]}><Input placeholder="白酒观察池" /></Form.Item>
           <Form.Item name="segmentType" label="板块类型">
@@ -107,39 +153,79 @@ function SegmentListTab() {
 function MembersDrawer({ segment, onClose }: { segment: MarketSegment | null; onClose: () => void }) {
   const [members, setMembers] = useState<MarketSegmentMember[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [symbol, setSymbol] = useState('');
   const [remark, setRemark] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
 
   const loadMembers = useCallback(async () => {
     if (!segment) return;
-    setLoading(true);
+    setLoading(true); setError(null);
     try { setMembers(await listSegmentMembers(segment.id)); }
+    catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }, [segment]);
 
-  // load on open
-  useCallback(() => { if (segment) loadMembers(); }, [segment, loadMembers]);
+  // 打开或切换板块时：先清理旧数据（含操作状态），再加载新数据
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!cancelled) { setMembers([]); setError(null); setAdding(false); setRemovingSymbol(null); }
+      if (!segment) return;
+      if (!cancelled) { setLoading(true); setError(null); }
+      try {
+        const r = await listSegmentMembers(segment.id);
+        if (!cancelled) setMembers(r);
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [segment]);
 
   const handleAdd = async () => {
-    if (!segment || !symbol.trim()) return;
-    await addSegmentMember(segment.id, { canonicalSymbol: symbol.trim(), remark: remark.trim() || undefined });
-    setSymbol(''); setRemark('');
-    message.success('已添加'); loadMembers();
+    if (!segment || !symbol.trim() || adding) return;
+    setAdding(true); setError(null);
+    try {
+      await addSegmentMember(segment.id, { canonicalSymbol: symbol.trim(), remark: remark.trim() || undefined });
+      setSymbol(''); setRemark('');
+      message.success('已添加');
+      await loadMembers();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleRemove = async (s: string) => {
-    if (!segment) return;
-    await removeSegmentMember(segment.id, s);
-    loadMembers();
+    if (!segment || removingSymbol) return;
+    setRemovingSymbol(s); setError(null);
+    try {
+      await removeSegmentMember(segment.id, s);
+      await loadMembers();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRemovingSymbol(null);
+    }
   };
 
   return (
     <Drawer title={segment ? `成员管理：${segment.segmentName}` : ''} open={!!segment} onClose={onClose} width={520}>
+      {error && (
+        <Alert type="error" message={error} style={{ marginBottom: 16 }}
+          action={<Button size="small" onClick={loadMembers}>重试</Button>} />
+      )}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Input placeholder="代码 SH.600519" value={symbol} onChange={(e) => setSymbol(e.target.value)} />
-          <Input placeholder="备注（可选）" value={remark} onChange={(e) => setRemark(e.target.value)} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>添加成员</Button>
+          <Input placeholder="代码 SH.600519" value={symbol} onChange={(e) => setSymbol(e.target.value)} disabled={adding} />
+          <Input placeholder="备注（可选）" value={remark} onChange={(e) => setRemark(e.target.value)} disabled={adding} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} loading={adding} disabled={adding}>添加成员</Button>
         </Space>
       </Card>
       <Table<MarketSegmentMember>
@@ -152,8 +238,11 @@ function MembersDrawer({ segment, onClose }: { segment: MarketSegment | null; on
           {
             title: '操作', width: 80,
             render: (_, r) => (
-              <Popconfirm title="确定移除？" onConfirm={() => handleRemove(r.canonicalSymbol)}>
-                <Button size="small" type="link" danger icon={<DeleteOutlined />}>移除</Button>
+              <Popconfirm title="确定移除？" onConfirm={() => handleRemove(r.canonicalSymbol)}
+                disabled={removingSymbol === r.canonicalSymbol}>
+                <Button size="small" type="link" danger icon={<DeleteOutlined />}
+                  loading={removingSymbol === r.canonicalSymbol}
+                  disabled={removingSymbol !== null && removingSymbol !== r.canonicalSymbol}>移除</Button>
               </Popconfirm>
             ),
           },

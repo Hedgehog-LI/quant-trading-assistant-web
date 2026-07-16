@@ -470,7 +470,7 @@ export interface MarketSegment {
 
 export interface MarketSegmentMember {
   id: EntityId;
-  segmentId: number;
+  segmentId: EntityId;
   canonicalSymbol: string;
   sortOrder?: number;
   remark?: string;

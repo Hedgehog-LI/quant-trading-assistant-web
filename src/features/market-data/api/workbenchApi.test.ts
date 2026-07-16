@@ -1,8 +1,10 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { saveSettings } from '../../settings/api/settingsApi';
 import { clearAll } from '../../../shared/api/localStorageClient';
+import { client } from '../../../shared/api/client';
 import {
   getWorkbenchOverview, getTradingSessions, isTradingDay, createSyncPlan,
+  listTaskItems, reconcileTask,
 } from './workbenchApi';
 
 describe('workbenchApi mock', () => {
@@ -51,5 +53,31 @@ describe('workbenchApi mock', () => {
       expect(plan.adjustType).toBe('NONE');
       expect(plan.triggerType).toBe('MANUAL');
     });
+  });
+});
+
+describe('workbenchApi remote task items', () => {
+  beforeEach(() => {
+    clearAll();
+    saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
+  });
+
+  it('listTaskItems calls GET /sync-tasks/{taskId}/items with params', async () => {
+    const mockGet = vi.spyOn(client, 'get').mockResolvedValueOnce({
+      data: { success: true, code: 'SUCCESS', data: { items: [], total: 0, page: 1, size: 20 } },
+    });
+    await listTaskItems(42, undefined, 2, 10);
+    expect(mockGet).toHaveBeenCalledWith('/market-data/sync-tasks/42/items', { params: { status: undefined, page: 2, size: 10 } });
+    mockGet.mockRestore();
+  });
+
+  it('reconcileTask calls POST /sync-tasks/{taskId}/reconcile', async () => {
+    const mockPost = vi.spyOn(client, 'post').mockResolvedValueOnce({
+      data: { success: true, code: 'SUCCESS', data: { id: 42, taskType: 'DAILY_BAR_BACKFILL', provider: 'LONGPORT', scopeJson: '{}', status: 'SUCCEEDED', createdAt: '' } },
+    });
+    const result = await reconcileTask(42);
+    expect(mockPost).toHaveBeenCalledWith('/market-data/sync-tasks/42/reconcile');
+    expect(result.status).toBe('SUCCEEDED');
+    mockPost.mockRestore();
   });
 });
