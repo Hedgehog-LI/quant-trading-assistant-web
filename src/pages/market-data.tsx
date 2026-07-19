@@ -10,6 +10,7 @@ import {
   getProviderStatus, healthCheck, getSyncTasks, getQuoteSnapshots, fetchLatestQuotes,
   getAlerts, resolveAlert, createDailyBarSync,
 } from '../features/market-data/api/marketDataApi';
+import { normalizeCanonicalSymbol, parseCanonicalSymbols } from '../features/market-data/utils/canonicalSymbol';
 import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
   ProviderStatus, StockQuoteSnapshot, MarketDataSyncTask, MarketDataAlert } from '../shared/types/domain';
 
@@ -17,7 +18,6 @@ const DISCLAIMER = '行情数据用于支撑指标与回测，不构成投资建
 const LONGPORT_SDK_MISSING_TEXT = 'LongPort Java SDK 未安装';
 const LONGPORT_CREDENTIALS_MISSING_TEXT = 'LongPort 凭据未配置';
 const MAX_LONGPORT_QUOTE_SYMBOLS = 500;
-const CANONICAL_SYMBOL_PATTERN = /^(SH|SZ|BJ)\.\d{4,6}$/;
 
 function providerStatusTitle(status: ProviderStatus): string {
   if (status.configured && status.reachable) return 'LongPort provider 可用';
@@ -31,32 +31,6 @@ function providerStatusAlertType(status: ProviderStatus): 'success' | 'warning' 
   if (status.configured && status.reachable) return 'success';
   if (status.configured && !status.reachable) return 'error';
   return 'warning';
-}
-
-function normalizeCanonicalSymbol(symbol: string): string {
-  const normalized = symbol.trim().toUpperCase();
-  if (!CANONICAL_SYMBOL_PATTERN.test(normalized)) {
-    throw new Error(`证券代码格式不合法：${symbol || '空值'}。请使用 SH.600519 / SZ.000001 / BJ.430047`);
-  }
-  return normalized;
-}
-
-function parseCanonicalSymbols(input: string): string[] {
-  const rawSymbols = input.split(/[,\n\s]+/).map(s => s.trim()).filter(Boolean);
-  if (rawSymbols.length === 0) {
-    throw new Error('请输入至少一个证券代码');
-  }
-  const invalidSymbols = rawSymbols
-    .map(s => s.toUpperCase())
-    .filter(s => !CANONICAL_SYMBOL_PATTERN.test(s));
-  if (invalidSymbols.length > 0) {
-    throw new Error(`证券代码格式不合法：${invalidSymbols.slice(0, 5).join('、')}`);
-  }
-  const uniqueSymbols = Array.from(new Set(rawSymbols.map(s => s.toUpperCase())));
-  if (uniqueSymbols.length > MAX_LONGPORT_QUOTE_SYMBOLS) {
-    throw new Error(`单次最多支持 ${MAX_LONGPORT_QUOTE_SYMBOLS} 个证券代码`);
-  }
-  return uniqueSymbols;
 }
 
 async function ensureLongPortReady(): Promise<boolean> {
@@ -125,7 +99,7 @@ function QuoteSnapshotsTab() {
   const handleFetchLatest = async () => {
     let symbols: string[];
     try {
-      symbols = parseCanonicalSymbols(fetchSymbols);
+      symbols = parseCanonicalSymbols(fetchSymbols, MAX_LONGPORT_QUOTE_SYMBOLS);
     } catch (e) {
       message.warning(e instanceof Error ? e.message : '证券代码格式不合法');
       return;
@@ -155,7 +129,7 @@ function QuoteSnapshotsTab() {
         title="外部行情只写入行情快照，不会覆盖手工当前价。" />
       <Space style={{ marginBottom: 16, width: '100%' }} wrap direction="vertical">
         <Space wrap>
-          <Input.TextArea placeholder="输入 canonicalSymbol，逗号或换行分隔（如 SH.600519, SZ.000001）"
+          <Input.TextArea placeholder="输入证券代码，逗号或换行分隔（如 SH.600519、HK.02498、US.AAPL）"
             style={{ width: 400 }} rows={1} value={fetchSymbols}
             onChange={(e) => setFetchSymbols(e.target.value)} />
           <Popconfirm title="拉取并保存最新行情？不覆盖手工当前价。" onConfirm={() => void handleFetchLatest()}>
@@ -307,7 +281,8 @@ function StocksTab() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Select allowClear placeholder="市场" style={{ width: 120 }} value={filter.market}
           onChange={(v) => { setFilter({ ...filter, market: v }); setPage(1); }}
-          options={[{ value: 'SH', label: 'SH' }, { value: 'SZ', label: 'SZ' }, { value: 'BJ', label: 'BJ' }]} />
+          options={[{ value: 'SH', label: 'SH' }, { value: 'SZ', label: 'SZ' }, { value: 'BJ', label: 'BJ' },
+            { value: 'HK', label: 'HK' }, { value: 'US', label: 'US' }]} />
         <Input allowClear placeholder="搜索代码/名称" style={{ width: 200 }} value={filter.keyword}
           onChange={(e) => { setFilter({ ...filter, keyword: e.target.value }); setPage(1); }} />
         <Button icon={<ReloadOutlined />} onClick={() => void load(page, pageSize, filter)}>刷新</Button>
@@ -539,7 +514,7 @@ function SyncTasksTab() {
     <>
       <Space style={{ marginBottom: 16, width: '100%' }} wrap direction="vertical">
         <Space wrap>
-          <Input allowClear placeholder="canonicalSymbol（如 SH.600519）" style={{ width: 200 }} value={syncSymbol}
+          <Input allowClear placeholder="如 SH.600519 / HK.02498 / US.AAPL" style={{ width: 260 }} value={syncSymbol}
             onChange={(e) => setSyncSymbol(e.target.value)} />
           <DatePicker placeholder="起始日期" value={syncStartDate ? dayjs(syncStartDate) : null}
             onChange={(d) => setSyncStartDate(d?.format('YYYY-MM-DD'))} />
@@ -653,10 +628,11 @@ function StockFormDrawer({ open, onClose, onSubmit }: {
     <Drawer title="新增证券" open={open} onClose={() => { form.resetFields(); onClose(); }} size={420} destroyOnClose>
       <Form form={form} layout="vertical" onFinish={async (v) => { await onSubmit(v); form.resetFields(); }}>
         <Form.Item name="market" label="市场" rules={[{ required: true }]}>
-          <Select options={[{ value: 'SH', label: 'SH 上海' }, { value: 'SZ', label: 'SZ 深圳' }, { value: 'BJ', label: 'BJ 北京' }]} />
+          <Select options={[{ value: 'SH', label: 'SH 上海' }, { value: 'SZ', label: 'SZ 深圳' },
+            { value: 'BJ', label: 'BJ 北京' }, { value: 'HK', label: 'HK 香港' }, { value: 'US', label: 'US 美国' }]} />
         </Form.Item>
-        <Form.Item name="symbol" label="证券代码" rules={[{ required: true, message: '请输入 4-6 位数字代码' }]}>
-          <Input placeholder="如 600519" maxLength={6} />
+        <Form.Item name="symbol" label="证券代码" rules={[{ required: true, message: '请输入证券代码' }]}>
+          <Input placeholder="如 600519 / 2498 / AAPL" maxLength={16} />
         </Form.Item>
         <Form.Item name="name" label="证券名称"><Input placeholder="如 贵州茅台" /></Form.Item>
         <Button type="primary" htmlType="submit">保存</Button>

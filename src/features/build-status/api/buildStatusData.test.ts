@@ -121,13 +121,23 @@ describe('buildStatusData', () => {
 
     expect(workspace?.status).toBe('DONE');
     expect(workspace?.currentEvidence.join(' ')).toContain('任务明细 Drawer');
-    expect(collection?.status).toBe('IN_PROGRESS');
-    expect(collection?.currentEvidence.join(' ')).toContain('sub_task_id');
-    expect(collection?.nextActions.join(' ')).toContain('分钟 K');
-    expect(minuteBar?.status).toBe('IN_PROGRESS');
-    expect(minuteBar?.risks.join(' ')).toContain('无法真实拉取分钟K');
+    expect(collection?.status).toBe('DONE');
+    expect(collection?.maturity).toBe('M4');
+    expect(collection?.currentEvidence.join(' ')).toContain('V13');
+    expect(collection?.currentEvidence.join(' ')).toContain('INTRADAY_MINUTE_REFRESH');
+    expect(minuteBar?.status).toBe('DONE');
+    expect(minuteBar?.maturity).toBe('M4');
+    expect(minuteBar?.currentEvidence.join(' ')).toContain('SH.601318');
     expect(segment?.status).toBe('DONE');
     expect(segment?.currentEvidence.join(' ')).toContain('8 项真实行为测试');
+  });
+
+  it('市场板块目录已完成关注与快照数据资产闭环', () => {
+    const sector = flattenBuildNodes(buildStatusTree).find((n) => n.id === 'market-sector-catalog');
+    expect(sector?.status).toBe('DONE');
+    expect(sector?.progress).toBe(92);
+    expect(sector?.currentEvidence.join(' ')).toContain('V14');
+    expect(sector?.currentEvidence.join(' ')).toContain('CN/HK/US');
   });
 
   it('不含过期下一步字符串', () => {
@@ -166,7 +176,7 @@ describe('buildStatusData', () => {
   it('summary cards 当前最优先含"行情"字样', () => {
     const top = buildSummaryCards.find((c) => c.title === '当前最优先');
     expect(top?.value).toContain('行情');
-    expect(top?.value).toContain('工作台');
+    expect(top?.value).toContain('异动观察');
     expect(top?.status).toBe('IN_PROGRESS');
   });
 

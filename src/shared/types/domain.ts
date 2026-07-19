@@ -400,6 +400,10 @@ export interface MarketDataSyncPlan {
   description?: string;
   lastRunAt?: string;
   lastTaskId?: number;
+  configurationStatus?: 'VALID' | 'NEEDS_ATTENTION';
+  validationErrors?: string[];
+  manuallyRunnable?: boolean;
+  automaticallyRunnable?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -475,4 +479,83 @@ export interface MarketSegmentMember {
   sortOrder?: number;
   remark?: string;
   createdAt: string;
+}
+
+export interface MarketSectorRank {
+  market: 'CN' | 'HK' | 'US';
+  name: string;
+  providerSectorId: string;
+  changeRate?: number;
+  leadingName?: string;
+  leadingSymbol?: string;
+  leadingChangeRate?: number;
+  indicatorName?: string;
+  indicatorValue?: string;
+  providerCode: string;
+}
+
+export interface MarketSectorPeer {
+  market: 'CN' | 'HK' | 'US';
+  topName?: string;
+  name: string;
+  providerSectorId: string;
+  stockCount?: number;
+  changeRate?: number;
+  yearToDateChangeRate?: number;
+  hasChildren: boolean;
+  providerCode: string;
+}
+
+export interface MarketSectorSnapshot {
+  id: EntityId;
+  watchId: EntityId;
+  snapshotTime: string;
+  rankIndicator: string;
+  changeRate?: number;
+  yearToDateChangeRate?: number;
+  leadingName?: string;
+  leadingSymbol?: string;
+  leadingChangeRate?: number;
+  constituentCount?: number;
+  riseCount?: number;
+  fallCount?: number;
+  flatCount?: number;
+  totalNetInflow?: number;
+  totalTurnoverAmount?: number;
+  totalVolume?: number;
+  dataSource: string;
+}
+
+export interface MarketSectorWatch {
+  id: EntityId;
+  providerCode: string;
+  providerSectorId: string;
+  marketCode: 'CN' | 'HK' | 'US';
+  sectorName: string;
+  topName?: string;
+  trackingSymbol?: string;
+  enabled: boolean;
+  lastRefreshedAt?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+  latestSnapshot?: MarketSectorSnapshot;
+}
+
+export interface MarketSectorMemberSnapshot {
+  id: EntityId;
+  snapshotId: EntityId;
+  canonicalSymbol: string;
+  securityName: string;
+  currentPrice?: number;
+  previousClose?: number;
+  changeRate?: number;
+  netInflow?: number;
+  turnoverAmount?: number;
+  volume?: number;
+  totalShares?: number;
+  circulatingShares?: number;
+  tags?: string;
+  tradeStatus?: number;
+  delayed: boolean;
 }

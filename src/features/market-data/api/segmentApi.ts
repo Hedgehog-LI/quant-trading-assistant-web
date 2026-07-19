@@ -3,6 +3,7 @@ import { unwrap, unwrapVoid } from '../../../shared/api/unwrappers';
 import { getItem, setItem, removeItem } from '../../../shared/api/localStorageClient';
 import { generateId } from '../../../shared/utils/id';
 import { getSettings } from '../../settings/api/settingsApi';
+import { normalizeCanonicalSymbol } from '../utils/canonicalSymbol';
 import type { MarketSegment, MarketSegmentMember, EntityId } from '../../../shared/types/domain';
 
 interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
@@ -20,12 +21,17 @@ function memberKey(segmentId: EntityId): string {
 
 /** 规范化 canonical symbol：去空格 + 转大写。 */
 function normalizeSymbol(symbol: string): string {
-  return symbol.trim().toUpperCase();
+  return normalizeCanonicalSymbol(symbol);
 }
 
 /** 校验 canonical symbol 格式（与后端 CANONICAL_SYMBOL_REGEX 一致）。 */
 function isValidCanonicalSymbol(symbol: string): boolean {
-  return /^(SH|SZ|BJ)\.\d{4,6}$/.test(symbol);
+  try {
+    normalizeCanonicalSymbol(symbol);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function nowIso(): string {

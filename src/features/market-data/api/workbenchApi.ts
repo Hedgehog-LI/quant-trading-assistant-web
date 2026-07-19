@@ -1,6 +1,8 @@
 import { client } from '../../../shared/api/client';
 import { unwrap } from '../../../shared/api/unwrappers';
 import { getSettings } from '../../settings/api/settingsApi';
+import { getItem, setItem } from '../../../shared/api/localStorageClient';
+import { generateId } from '../../../shared/utils/id';
 import type {
   WorkbenchOverview,
   MarketDataSyncPlan,
@@ -33,6 +35,8 @@ const remoteApi = {
     unwrap<MarketDataSyncPlan>(client.post(`${BASE}/sync-plans/${id}/toggle`, null, { params: { enabled } })),
   runPlan: (id: EntityId) =>
     unwrap<MarketDataSyncPlan>(client.post(`${BASE}/sync-plans/${id}/run`)),
+  getTask: (taskId: EntityId) =>
+    unwrap<MarketDataSyncTask>(client.get(`${BASE}/sync-tasks/${taskId}`)),
   listTaskItems: (taskId: EntityId, status?: string, page = 1, size = 20) =>
     unwrap<PageResult<MarketDataSyncTaskItem>>(client.get(`${BASE}/sync-tasks/${taskId}/items`, { params: { status, page, size } })),
   reconcileTask: (taskId: EntityId) =>
@@ -47,6 +51,8 @@ const remoteApi = {
     unwrap<boolean>(client.get(`${BASE}/trading-sessions/is-trading-day`, { params: { marketCode, date } })),
   listWatermarks: (params: WatermarkFilter) =>
     unwrap<PageResult<MarketDataWatermark>>(client.get(`${BASE}/watermarks`, { params })),
+  verifySecurity: (data: VerifySecurityInput) =>
+    unwrap<SecurityVerification>(client.post(`${BASE}/securities/verify`, data)),
 };
 
 // ==================== Mock 实现 ====================
@@ -54,6 +60,10 @@ const remoteApi = {
 function emptyPage<T>(): PageResult<T> {
   return { items: [], total: 0, page: 1, size: 20 };
 }
+
+const PLAN_KEY = 'marketSyncPlans';
+function readMockPlans(): MarketDataSyncPlan[] { return getItem<MarketDataSyncPlan[]>(PLAN_KEY) ?? []; }
+function writeMockPlans(plans: MarketDataSyncPlan[]): void { setItem(PLAN_KEY, plans); }
 
 const mockApi = {
   getOverview: async (): Promise<WorkbenchOverview> => ({
@@ -72,18 +82,51 @@ const mockApi = {
       { id: 4, marketCode: 'CN_A', sessionType: 'AUCTION', sessionName: '集合竞价（收盘）', startTime: '14:57', endTime: '15:00', isAuction: true, sortOrder: 4, enabled: true },
     ],
   }),
-  createPlan: async (_data: PlanInput): Promise<MarketDataSyncPlan> => ({
-    id: Date.now(), planName: _data.planName, taskType: _data.taskType, provider: _data.provider,
+  createPlan: async (_data: PlanInput): Promise<MarketDataSyncPlan> => {
+    const plan: MarketDataSyncPlan = {
+    id: generateId(), planName: _data.planName, taskType: _data.taskType, provider: _data.provider,
     scopeJson: _data.scopeJson, intervalType: _data.intervalType, adjustType: _data.adjustType || 'NONE',
     triggerType: _data.triggerType || 'MANUAL', cronExpr: _data.cronExpr,
     includeAuction: _data.includeAuction || false, collectFrequency: _data.collectFrequency,
-    enabled: true, description: _data.description, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-  }),
-  listPlans: async (_params: PlanFilter): Promise<PageResult<MarketDataSyncPlan>> => emptyPage(),
-  getPlan: async (_id: EntityId): Promise<MarketDataSyncPlan> => { throw new Error('mock 模式无计划数据'); },
-  updatePlan: async (_id: EntityId, _data: PlanUpdateInput): Promise<MarketDataSyncPlan> => { throw new Error('mock 模式无计划数据'); },
-  togglePlan: async (_id: EntityId, enabled: boolean): Promise<MarketDataSyncPlan> => ({ enabled } as MarketDataSyncPlan),
-  runPlan: async (_id: EntityId): Promise<MarketDataSyncPlan> => ({ lastRunAt: new Date().toISOString(), lastTaskId: Date.now() } as MarketDataSyncPlan),
+    enabled: true, description: _data.description, configurationStatus: 'VALID', validationErrors: [],
+    manuallyRunnable: _data.taskType !== 'INTRADAY_MINUTE_REFRESH',
+    automaticallyRunnable: _data.taskType === 'INTRADAY_MINUTE_REFRESH',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+    writeMockPlans([...readMockPlans(), plan]);
+    return plan;
+  },
+  listPlans: async (_params: PlanFilter): Promise<PageResult<MarketDataSyncPlan>> => {
+    const filtered = readMockPlans().filter(plan => !_params.taskType || plan.taskType === _params.taskType)
+      .filter(plan => !_params.provider || plan.provider === _params.provider)
+      .filter(plan => _params.enabled == null || plan.enabled === _params.enabled);
+    const page = _params.page ?? 1; const size = _params.size ?? 20; const offset = (page - 1) * size;
+    return { items: filtered.slice(offset, offset + size), total: filtered.length, page, size };
+  },
+  getPlan: async (_id: EntityId): Promise<MarketDataSyncPlan> => {
+    const plan = readMockPlans().find(item => String(item.id) === String(_id));
+    if (!plan) throw new Error('采集计划不存在');
+    return plan;
+  },
+  updatePlan: async (_id: EntityId, _data: PlanUpdateInput): Promise<MarketDataSyncPlan> => {
+    const plans = readMockPlans(); const index = plans.findIndex(item => String(item.id) === String(_id));
+    if (index < 0) throw new Error('采集计划不存在');
+    plans[index] = { ...plans[index], ..._data, updatedAt: new Date().toISOString(), configurationStatus: 'VALID', validationErrors: [],
+      manuallyRunnable: _data.taskType !== 'INTRADAY_MINUTE_REFRESH', automaticallyRunnable: _data.taskType === 'INTRADAY_MINUTE_REFRESH' };
+    writeMockPlans(plans); return plans[index];
+  },
+  togglePlan: async (_id: EntityId, enabled: boolean): Promise<MarketDataSyncPlan> => {
+    const plans = readMockPlans(); const index = plans.findIndex(item => String(item.id) === String(_id));
+    if (index < 0) throw new Error('采集计划不存在');
+    plans[index] = { ...plans[index], enabled, updatedAt: new Date().toISOString() };
+    writeMockPlans(plans); return plans[index];
+  },
+  runPlan: async (_id: EntityId): Promise<MarketDataSyncPlan> => {
+    throw new Error('Mock 模式仅保存配置，不执行 provider；请切换到后端模式验证采集链路');
+  },
+  getTask: async (_taskId: EntityId): Promise<MarketDataSyncTask> => {
+    throw new Error('Mock 模式没有后端执行任务');
+  },
   listTaskItems: async (_taskId: EntityId, _status?: string): Promise<PageResult<MarketDataSyncTaskItem>> => emptyPage(),
   reconcileTask: async (taskId: EntityId): Promise<MarketDataSyncTask> => ({ id: Number(taskId), taskType: 'DAILY_BAR_BACKFILL', provider: 'LONGPORT', scopeJson: '{}', status: 'SUCCEEDED', createdAt: new Date().toISOString() } as MarketDataSyncTask),
   listMinuteBars: async (_filter: MinuteBarFilter): Promise<PageResult<StockMinuteBar>> => emptyPage(),
@@ -95,6 +138,9 @@ const mockApi = {
     return day !== 0 && day !== 6;
   },
   listWatermarks: async (_params: WatermarkFilter): Promise<PageResult<MarketDataWatermark>> => emptyPage(),
+  verifySecurity: async (_data: VerifySecurityInput): Promise<SecurityVerification> => {
+    throw new Error('本地模式不连接 LongPort，请切换到后端模式验证证券');
+  },
 };
 
 // ==================== 路由 ====================
@@ -124,6 +170,9 @@ export function toggleSyncPlan(id: EntityId, enabled: boolean) {
 export function runSyncPlan(id: EntityId) {
   return pick(mockApi.runPlan, remoteApi.runPlan)(id);
 }
+export function getSyncTask(id: EntityId) {
+  return pick(mockApi.getTask, remoteApi.getTask)(id);
+}
 export function listTaskItems(taskId: EntityId, status?: string, page?: number, size?: number) {
   return pick(mockApi.listTaskItems, remoteApi.listTaskItems)(taskId, status, page, size);
 }
@@ -145,6 +194,9 @@ export function isTradingDay(marketCode: string, date: string) {
 export function listWatermarks(params: WatermarkFilter) {
   return pick(mockApi.listWatermarks, remoteApi.listWatermarks)(params);
 }
+export function verifySecurity(data: VerifySecurityInput) {
+  return pick(mockApi.verifySecurity, remoteApi.verifySecurity)(data);
+}
 
 // ==================== 输入/过滤类型 ====================
 
@@ -164,6 +216,8 @@ export interface PlanInput {
 
 export interface PlanUpdateInput {
   planName: string;
+  taskType: string;
+  provider: string;
   scopeJson: string;
   intervalType?: string;
   adjustType?: string;
@@ -217,4 +271,28 @@ export interface WatermarkFilter {
   intervalType?: string;
   page?: number;
   size?: number;
+}
+
+export interface VerifySecurityInput {
+  market: 'CN' | 'HK' | 'US';
+  code: string;
+}
+
+export interface SecurityVerification {
+  canonicalSymbol: string;
+  providerSymbol?: string;
+  displayName?: string;
+  market: 'CN' | 'HK' | 'US';
+  exchange?: string;
+  currency?: string;
+  lotSize?: number;
+  verificationStatus: 'VERIFIED_QUOTE_AVAILABLE' | 'VERIFIED_DELAYED_QUOTE' | 'VERIFIED_NO_QUOTE'
+    | 'INVALID_SYMBOL' | 'PROVIDER_UNAVAILABLE' | 'NO_PERMISSION';
+  quoteAvailable: boolean;
+  lastPrice?: number;
+  quoteTime?: string;
+  tradeStatus?: string;
+  quoteDelay?: string;
+  provider: string;
+  message?: string;
 }

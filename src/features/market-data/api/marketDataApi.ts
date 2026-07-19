@@ -10,6 +10,7 @@ import { unwrap, unwrapVoid } from '../../../shared/api/unwrappers';
 import { getItem, setItem } from '../../../shared/api/localStorageClient';
 import { generateId } from '../../../shared/utils/id';
 import { getSettings } from '../../settings/api/settingsApi';
+import { normalizeCanonicalSymbol } from '../utils/canonicalSymbol';
 import type {
   StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
   ProviderStatus, StockQuoteSnapshot, MarketDataSyncTask, MarketDataAlert,
@@ -53,9 +54,7 @@ export interface PageResult<T> {
 
 // ============ 共享校验 ============
 function validateCanonical(s: string): string {
-  const v = s.trim().toUpperCase();
-  if (!/^(SH|SZ|BJ)\.\d{4,6}$/.test(v)) throw new Error(`canonical_symbol 格式不合法: ${v}`);
-  return v;
+  return normalizeCanonicalSymbol(s);
 }
 function validateAdjust(t: string): string {
   const v = t.trim().toUpperCase();
@@ -99,7 +98,7 @@ function uniqueKey(b: { canonicalSymbol: string; tradeDate: string; adjustType: 
 
 // ============ mock ============
 function buildCanonical(market: string, symbol: string): string {
-  return `${market.trim().toUpperCase()}.${symbol.trim()}`;
+  return normalizeCanonicalSymbol(`${market}.${symbol}`);
 }
 
 interface MockBar extends StockDailyBar {

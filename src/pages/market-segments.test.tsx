@@ -38,6 +38,12 @@ function findPopconfirmOkBtn(): HTMLButtonElement | undefined {
     }) as HTMLButtonElement | undefined;
 }
 
+function renderCustomPage() {
+  const result = render(<MarketSegmentsPage />);
+  fireEvent.click(screen.getByRole('tab', { name: '自定义分组' }));
+  return result;
+}
+
 describe('MarketSegmentsPage 行为测试', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,14 +60,14 @@ describe('MarketSegmentsPage 行为测试', () => {
       items: [{ id: 's1', segmentName: '白酒池', segmentType: 'CUSTOM', enabled: true, memberCount: 2, segmentCode: 'SEG_1', createdAt: '', updatedAt: '' }],
       total: 1, page: 1, size: 20,
     });
-    render(<MarketSegmentsPage />);
+    renderCustomPage();
     await waitFor(() => expect(screen.getByText('白酒池')).toBeInTheDocument());
     expect(mockApi.listSegments).toHaveBeenCalledWith({ page: 1, size: 20 });
   });
 
   it('2. 翻页用新 page 参数重新请求 listSegments', async () => {
     mockApi.listSegments.mockResolvedValue({ items: [], total: 25, page: 1, size: 20 });
-    render(<MarketSegmentsPage />);
+    renderCustomPage();
     await waitFor(() => expect(mockApi.listSegments).toHaveBeenCalledWith({ page: 1, size: 20 }));
     fireEvent.click(screen.getByTitle('2'));
     await waitFor(() => expect(mockApi.listSegments).toHaveBeenCalledWith({ page: 2, size: 20 }));
@@ -75,7 +81,7 @@ describe('MarketSegmentsPage 行为测试', () => {
     mockApi.listSegmentMembers.mockResolvedValue([
       { id: 'm1', segmentId: 's1', canonicalSymbol: 'SH.600519', sortOrder: 0, createdAt: '' },
     ]);
-    render(<MarketSegmentsPage />);
+    renderCustomPage();
     await waitFor(() => expect(screen.getByText('白酒池')).toBeInTheDocument());
     fireEvent.click(screen.getByText('成员'));
     await waitFor(() => expect(mockApi.listSegmentMembers).toHaveBeenCalledWith('s1'));
@@ -85,9 +91,9 @@ describe('MarketSegmentsPage 行为测试', () => {
   it('4. 创建失败调用 createSegment 且 message.error 被触发', async () => {
     // mock createSegment 返回 reject
     mockApi.createSegment.mockRejectedValue(new Error('创建失败_网络错误'));
-    render(<MarketSegmentsPage />);
-    // 点击新建板块打开 Drawer
-    fireEvent.click(screen.getByText('新建板块'));
+    renderCustomPage();
+    // 点击新建分组打开 Drawer
+    fireEvent.click(screen.getByText('新建分组'));
     // 等待 Drawer 打开
     await waitFor(() => expect(screen.getByPlaceholderText('白酒观察池')).toBeInTheDocument());
     // 填写板块名称
@@ -113,7 +119,7 @@ describe('MarketSegmentsPage 行为测试', () => {
       total: 1, page: 1, size: 20,
     });
     mockApi.deleteSegment.mockRejectedValue(new Error('删除失败_权限不足'));
-    render(<MarketSegmentsPage />);
+    renderCustomPage();
     await waitFor(() => expect(screen.getByText('不可删板块')).toBeInTheDocument());
     // 点击删除触发 Popconfirm
     fireEvent.click(screen.getByText('删除'));
@@ -137,7 +143,7 @@ describe('MarketSegmentsPage 行为测试', () => {
 
   it('6. 加载失败后重试重新请求 listSegments', async () => {
     mockApi.listSegments.mockRejectedValueOnce(new Error('网络错误'));
-    const { container } = render(<MarketSegmentsPage />);
+    const { container } = renderCustomPage();
     await waitFor(() => {
       const alert = container.querySelector('.ant-alert-error');
       expect(alert).toBeTruthy();
@@ -157,11 +163,11 @@ describe('MarketSegmentsPage 行为测试', () => {
     });
     let resolveAdd: () => void = () => {};
     mockApi.addSegmentMember.mockImplementation(() => new Promise((resolve) => { resolveAdd = resolve as () => void; }));
-    const { unmount } = render(<MarketSegmentsPage />);
+    const { unmount } = renderCustomPage();
     await waitFor(() => expect(screen.getByText('成员测试')).toBeInTheDocument());
     fireEvent.click(screen.getByText('成员'));
-    await waitFor(() => expect(screen.getByPlaceholderText('代码 SH.600519')).toBeInTheDocument());
-    fireEvent.change(screen.getByPlaceholderText('代码 SH.600519'), { target: { value: 'SH.600519' } });
+    const symbolInput = await screen.findByPlaceholderText('如 SH.600519 / HK.02498 / US.AAPL');
+    fireEvent.change(symbolInput, { target: { value: 'SH.600519' } });
     const addBtn = screen.getByText('添加成员');
     fireEvent.click(addBtn);
     fireEvent.click(addBtn);
@@ -181,7 +187,7 @@ describe('MarketSegmentsPage 行为测试', () => {
     ]);
     let resolveRemove: () => void = () => {};
     mockApi.removeSegmentMember.mockImplementation(() => new Promise((resolve) => { resolveRemove = resolve as () => void; }));
-    const { unmount } = render(<MarketSegmentsPage />);
+    const { unmount } = renderCustomPage();
     await waitFor(() => expect(screen.getByText('移除测试')).toBeInTheDocument());
     fireEvent.click(screen.getByText('成员'));
     await waitFor(() => expect(screen.getByText('SH.600519')).toBeInTheDocument());
