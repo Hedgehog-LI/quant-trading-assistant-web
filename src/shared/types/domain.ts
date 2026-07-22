@@ -510,6 +510,9 @@ export interface MarketSectorSnapshot {
   id: EntityId;
   watchId: EntityId;
   snapshotTime: string;
+  snapshotBucketTime?: string;
+  triggerType?: 'AUTO' | 'MANUAL';
+  fetchedAt?: string;
   rankIndicator: string;
   changeRate?: number;
   yearToDateChangeRate?: number;
@@ -524,6 +527,11 @@ export interface MarketSectorSnapshot {
   totalTurnoverAmount?: number;
   totalVolume?: number;
   dataSource: string;
+  expectedMemberCount?: number;
+  validMemberCount?: number;
+  delayedMemberCount?: number;
+  unmappedMemberCount?: number;
+  qualityStatus?: 'VALID' | 'SUSPECT';
 }
 
 export interface MarketSectorWatch {
@@ -535,11 +543,72 @@ export interface MarketSectorWatch {
   topName?: string;
   trackingSymbol?: string;
   enabled: boolean;
+  autoCollectEnabled?: boolean;
+  collectIntervalMinutes?: number;
   lastRefreshedAt?: string;
+  lastAutoCollectedAt?: string;
+  collectionState?: string;
+  nextRetryAt?: string;
+  consecutiveFailures?: number;
+  lastErrorCode?: string;
   lastError?: string;
   createdAt: string;
   updatedAt: string;
   latestSnapshot?: MarketSectorSnapshot;
+}
+
+export interface MarketSectorRankingConfig {
+  id: EntityId;
+  providerCode: string;
+  marketCode: 'CN' | 'HK' | 'US';
+  enabled: boolean;
+  intradayIntervalMinutes: number;
+  closeSnapshotEnabled: boolean;
+  rankLimit: number;
+  executionState: string;
+  lastIntradayAt?: string;
+  lastCloseTradeDate?: string;
+  lastSuccessAt?: string;
+  nextRetryAt?: string;
+  consecutiveFailures: number;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  updatedAt: string;
+}
+
+export interface MarketSectorRankingBatch {
+  id: EntityId;
+  providerCode: string;
+  marketCode: 'CN' | 'HK' | 'US';
+  tradeDate: string;
+  snapshotType: 'INTRADAY' | 'CLOSE' | 'MANUAL';
+  snapshotBucketTime: string;
+  snapshotTime: string;
+  itemCount: number;
+  risingCount: number;
+  fallingCount: number;
+  flatCount: number;
+  leaderSectorId?: string;
+  leaderSectorName?: string;
+  leaderChangeRate?: number;
+  laggardSectorId?: string;
+  laggardSectorName?: string;
+  laggardChangeRate?: number;
+  qualityStatus: 'VALID' | 'SUSPECT';
+}
+
+export interface MarketSectorRankingItem {
+  id: EntityId;
+  batchId: EntityId;
+  rankNo: number;
+  providerSectorId: string;
+  sectorName: string;
+  changeRate?: number;
+  leadingName?: string;
+  leadingSymbol?: string;
+  leadingChangeRate?: number;
+  indicatorName?: string;
+  indicatorValue?: string;
 }
 
 export interface MarketSectorMemberSnapshot {

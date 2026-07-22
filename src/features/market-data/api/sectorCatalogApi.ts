@@ -4,6 +4,7 @@ import { generateId } from '../../../shared/utils/id';
 import { getItem, setItem } from '../../../shared/api/localStorageClient';
 import { getSettings } from '../../settings/api/settingsApi';
 import type { EntityId, MarketSectorMemberSnapshot, MarketSectorPeer, MarketSectorRank,
+  MarketSectorRankingBatch, MarketSectorRankingConfig, MarketSectorRankingItem,
   MarketSectorSnapshot, MarketSectorWatch } from '../../../shared/types/domain';
 
 export type SectorMarket = 'CN' | 'HK' | 'US';
@@ -25,6 +26,18 @@ export interface CreateSectorWatchInput {
 }
 
 export interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
+
+export interface UpdateSectorRankingConfigInput {
+  enabled: boolean;
+  intradayIntervalMinutes: number;
+  closeSnapshotEnabled: boolean;
+  rankLimit: number;
+}
+
+export interface UpdateSectorWatchCollectionInput {
+  autoCollectEnabled: boolean;
+  collectIntervalMinutes: number;
+}
 
 const WATCH_KEY = 'marketSectorWatches';
 
@@ -133,4 +146,62 @@ export function listSectorSnapshotMembers(snapshotId: EntityId): Promise<MarketS
     return unwrap<MarketSectorMemberSnapshot[]>(client.get(`/market-data/sector-catalog/snapshots/${snapshotId}/members`));
   }
   return Promise.resolve([]);
+}
+
+export function listSectorRankingConfigs(): Promise<MarketSectorRankingConfig[]> {
+  if (getSettings().apiMode === 'remote') {
+    return unwrap<MarketSectorRankingConfig[]>(client.get('/market-data/sector-catalog/ranking-configs'));
+  }
+  return Promise.resolve((['CN', 'HK', 'US'] as SectorMarket[]).map((market, index) => ({
+    id: `demo-${market}`, providerCode: 'LOCAL_DEMO', marketCode: market, enabled: false,
+    intradayIntervalMinutes: 0, closeSnapshotEnabled: true, rankLimit: 100,
+    executionState: 'IDLE', consecutiveFailures: 0, updatedAt: new Date(Date.now() - index * 1000).toISOString(),
+  })));
+}
+
+export function updateSectorRankingConfig(market: SectorMarket,
+  input: UpdateSectorRankingConfigInput): Promise<MarketSectorRankingConfig> {
+  if (getSettings().apiMode === 'remote') {
+    return unwrap<MarketSectorRankingConfig>(
+      client.put(`/market-data/sector-catalog/ranking-configs/${market}`, input));
+  }
+  return Promise.resolve({ id: `demo-${market}`, providerCode: 'LOCAL_DEMO', marketCode: market,
+    ...input, executionState: 'IDLE', consecutiveFailures: 0, updatedAt: new Date().toISOString() });
+}
+
+export function runSectorRanking(market: SectorMarket): Promise<MarketSectorRankingBatch> {
+  if (getSettings().apiMode === 'remote') {
+    return unwrap<MarketSectorRankingBatch>(client.post(`/market-data/sector-catalog/ranking-configs/${market}/run`));
+  }
+  return Promise.reject(new Error('本地模式不执行真实板块采集'));
+}
+
+export function listSectorRankingHistory(params: { market?: SectorMarket; tradeDate?: string;
+  snapshotType?: string; page?: number; size?: number } = {}): Promise<PageResult<MarketSectorRankingBatch>> {
+  if (getSettings().apiMode === 'remote') {
+    return unwrap<PageResult<MarketSectorRankingBatch>>(
+      client.get('/market-data/sector-catalog/ranking-history', { params: { page: 1, size: 30, ...params } }));
+  }
+  return Promise.resolve({ items: [], total: 0, page: params.page ?? 1, size: params.size ?? 30 });
+}
+
+export function listSectorRankingItems(batchId: EntityId): Promise<MarketSectorRankingItem[]> {
+  if (getSettings().apiMode === 'remote') {
+    return unwrap<MarketSectorRankingItem[]>(
+      client.get(`/market-data/sector-catalog/ranking-history/${batchId}/items`));
+  }
+  return Promise.resolve([]);
+}
+
+export async function updateSectorWatchCollection(id: EntityId,
+  input: UpdateSectorWatchCollectionInput): Promise<MarketSectorWatch> {
+  if (getSettings().apiMode === 'remote') {
+    return unwrap<MarketSectorWatch>(client.put(`/market-data/sector-catalog/watches/${id}/collection`, input));
+  }
+  const watches = getItem<MarketSectorWatch[]>(WATCH_KEY) ?? [];
+  const index = watches.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error('行业关注不存在');
+  watches[index] = { ...watches[index], ...input, collectionState: 'IDLE', updatedAt: new Date().toISOString() };
+  setItem(WATCH_KEY, watches);
+  return watches[index];
 }

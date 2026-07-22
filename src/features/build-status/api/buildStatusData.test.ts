@@ -132,12 +132,13 @@ describe('buildStatusData', () => {
     expect(segment?.currentEvidence.join(' ')).toContain('8 项真实行为测试');
   });
 
-  it('市场板块目录已完成关注与快照数据资产闭环', () => {
+  it('市场板块目录已完成双层自动采集数据资产闭环', () => {
     const sector = flattenBuildNodes(buildStatusTree).find((n) => n.id === 'market-sector-catalog');
     expect(sector?.status).toBe('DONE');
-    expect(sector?.progress).toBe(92);
-    expect(sector?.currentEvidence.join(' ')).toContain('V14');
+    expect(sector?.progress).toBe(97);
+    expect(sector?.currentEvidence.join(' ')).toContain('V15');
     expect(sector?.currentEvidence.join(' ')).toContain('CN/HK/US');
+    expect(sector?.currentEvidence.join(' ')).toContain('09:15-09:25');
   });
 
   it('不含过期下一步字符串', () => {

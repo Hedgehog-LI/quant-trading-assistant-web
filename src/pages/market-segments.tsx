@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Drawer, Form, Input, message, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from 'antd';
-import { PlusOutlined, DeleteOutlined, TeamOutlined, ReloadOutlined, FundOutlined, StarOutlined, HistoryOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, TeamOutlined, ReloadOutlined, FundOutlined, StarOutlined, HistoryOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import {
   createSegment, listSegments, deleteSegment,
   listSegmentMembers, addSegmentMember, removeSegmentMember,
@@ -10,10 +10,13 @@ import {
   getIndustryPeers, listIndustryRankings,
   createSectorWatch, deleteSectorWatch, listSectorSnapshotMembers, listSectorSnapshots,
   listSectorWatches, refreshSectorWatch, toggleSectorWatch,
+  listSectorRankingConfigs, listSectorRankingHistory, listSectorRankingItems, runSectorRanking,
+  updateSectorRankingConfig, updateSectorWatchCollection,
   type SectorMarket, type SectorRankIndicator,
 } from '../features/market-data/api/sectorCatalogApi';
 import type { MarketSegment, MarketSegmentMember, EntityId, MarketSectorMemberSnapshot,
-  MarketSectorPeer, MarketSectorRank, MarketSectorSnapshot, MarketSectorWatch } from '../shared/types/domain';
+  MarketSectorPeer, MarketSectorRank, MarketSectorRankingBatch, MarketSectorRankingConfig,
+  MarketSectorRankingItem, MarketSectorSnapshot, MarketSectorWatch } from '../shared/types/domain';
 
 interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
 
@@ -28,12 +31,146 @@ export function MarketSegmentsPage() {
         style={{ marginTop: 16 }}
         items={[
           { key: 'market', label: '市场板块', children: <MarketSectorTab /> },
+          { key: 'collection', label: '自动采集', children: <MarketSectorCollectionTab /> },
           { key: 'watch', label: '我的关注', children: <MarketSectorWatchTab /> },
           { key: 'custom', label: '自定义分组', children: <SegmentListTab /> },
         ]}
       />
     </div>
   );
+}
+
+const frequencyOptions = [
+  { value: 0, label: '仅收盘' }, { value: 5, label: '每 5 分钟' },
+  { value: 10, label: '每 10 分钟' }, { value: 15, label: '每 15 分钟' },
+  { value: 30, label: '每 30 分钟' }, { value: 60, label: '每 60 分钟' },
+];
+
+const marketLabel: Record<SectorMarket, string> = { CN: 'A 股', HK: '港股', US: '美股' };
+
+function MarketSectorCollectionTab() {
+  const [configs, setConfigs] = useState<MarketSectorRankingConfig[]>([]);
+  const [history, setHistory] = useState<MarketSectorRankingBatch[]>([]);
+  const [items, setItems] = useState<MarketSectorRankingItem[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<MarketSectorRankingBatch | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyMarket, setBusyMarket] = useState<SectorMarket | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const [configRows, historyRows] = await Promise.all([
+        listSectorRankingConfigs(), listSectorRankingHistory({ size: 30 }),
+      ]);
+      setConfigs(configRows); setHistory(historyRows.items);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [configRows, historyRows] = await Promise.all([
+          listSectorRankingConfigs(), listSectorRankingHistory({ size: 30 }),
+        ]);
+        if (!cancelled) { setConfigs(configRows); setHistory(historyRows.items); setError(null); }
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
+  const save = async (row: MarketSectorRankingConfig, changes: Partial<MarketSectorRankingConfig>) => {
+    setBusyMarket(row.marketCode);
+    try {
+      await updateSectorRankingConfig(row.marketCode, {
+        enabled: changes.enabled ?? row.enabled,
+        intradayIntervalMinutes: changes.intradayIntervalMinutes ?? row.intradayIntervalMinutes,
+        closeSnapshotEnabled: changes.closeSnapshotEnabled ?? row.closeSnapshotEnabled,
+        rankLimit: row.rankLimit,
+      });
+      message.success(`${marketLabel[row.marketCode]}采集配置已保存`); await load();
+    } catch (e) { message.error((e as Error).message); }
+    finally { setBusyMarket(null); }
+  };
+
+  const run = async (market: SectorMarket) => {
+    setBusyMarket(market);
+    try { await runSectorRanking(market); message.success(`${marketLabel[market]}板块榜单已入库`); await load(); }
+    catch (e) { message.error((e as Error).message); }
+    finally { setBusyMarket(null); }
+  };
+
+  const openBatch = async (batch: MarketSectorRankingBatch) => {
+    setSelectedBatch(batch); setItems([]);
+    try { setItems(await listSectorRankingItems(batch.id)); }
+    catch (e) { message.error((e as Error).message); }
+  };
+
+  const percent = (value?: number) => value == null ? '-' : `${(value * 100).toFixed(2)}%`;
+  const state = (value: string) => {
+    const color = value === 'IDLE' ? 'green' : value === 'ACTIVE' ? 'blue'
+      : value.startsWith('BLOCKED') ? 'red' : 'orange';
+    return <Tag color={color}>{value}</Tag>;
+  };
+
+  return <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+    <Alert type="info" showIcon
+      title="频率只在有效交易窗口内运行：A 股含 09:15–09:25 集合竞价，午休和收盘后停止；收盘仅保存一次快照。" />
+    {error && <Alert type="error" title={error} action={<Button onClick={load}>重试</Button>} />}
+    <Table<MarketSectorRankingConfig> size="small" rowKey="marketCode" loading={loading}
+      dataSource={configs} pagination={false} scroll={{ x: 1050 }} columns={[
+        { title: '市场', width: 90, render: (_, r) => <Space><Tag>{r.marketCode}</Tag><Text>{marketLabel[r.marketCode]}</Text></Space> },
+        { title: '自动采集', width: 100, render: (_, r) => <Switch size="small" checked={r.enabled}
+          loading={busyMarket === r.marketCode} onChange={(enabled) => save(r, { enabled })} /> },
+        { title: '盘中频率', width: 150, render: (_, r) => <Select value={r.intradayIntervalMinutes}
+          style={{ width: 130 }} options={frequencyOptions} disabled={busyMarket === r.marketCode}
+          onChange={(intradayIntervalMinutes) => save(r, { intradayIntervalMinutes })} /> },
+        { title: '收盘快照', width: 100, render: (_, r) => <Switch size="small" checked={r.closeSnapshotEnabled}
+          loading={busyMarket === r.marketCode} onChange={(closeSnapshotEnabled) => save(r, { closeSnapshotEnabled })} /> },
+        { title: '状态', dataIndex: 'executionState', width: 150, render: state },
+        { title: '最近成功', dataIndex: 'lastSuccessAt', width: 170,
+          render: (v?: string) => v ? new Date(v).toLocaleString() : '-' },
+        { title: '错误', width: 190, ellipsis: true,
+          render: (_, r) => r.lastErrorMessage ?? r.lastErrorCode ?? '-' },
+        { title: '操作', width: 100, fixed: 'right', render: (_, r) => <Button type="link" size="small"
+          icon={<PlayCircleOutlined />} loading={busyMarket === r.marketCode} onClick={() => run(r.marketCode)}>立即采集</Button> },
+      ]} />
+    <Space><Title level={5} style={{ margin: 0 }}>历史榜单</Title>
+      <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button></Space>
+    <Table<MarketSectorRankingBatch> size="small" rowKey="id" loading={loading} dataSource={history}
+      pagination={{ pageSize: 10 }} scroll={{ x: 1000 }} columns={[
+        { title: '时间', dataIndex: 'snapshotTime', width: 170, render: (v: string) => new Date(v).toLocaleString() },
+        { title: '市场', dataIndex: 'marketCode', width: 70, render: (v: string) => <Tag>{v}</Tag> },
+        { title: '类型', dataIndex: 'snapshotType', width: 100, render: (v: string) => <Tag>{v}</Tag> },
+        { title: '板块数', dataIndex: 'itemCount', width: 80 },
+        { title: '上涨/下跌/平盘', width: 130, render: (_, r) => `${r.risingCount}/${r.fallingCount}/${r.flatCount}` },
+        { title: '领涨', width: 170, render: (_, r) => `${r.leaderSectorName ?? '-'} ${percent(r.leaderChangeRate)}` },
+        { title: '领跌', width: 170, render: (_, r) => `${r.laggardSectorName ?? '-'} ${percent(r.laggardChangeRate)}` },
+        { title: '质量', dataIndex: 'qualityStatus', width: 80,
+          render: (v: string) => <Tag color={v === 'VALID' ? 'green' : 'orange'}>{v}</Tag> },
+        { title: '操作', width: 80, fixed: 'right', render: (_, r) => <Button type="link" size="small"
+          icon={<HistoryOutlined />} onClick={() => openBatch(r)}>榜单</Button> },
+      ]} />
+    <Drawer title={selectedBatch ? `${marketLabel[selectedBatch.marketCode]} · 板块榜单` : '板块榜单'}
+      open={!!selectedBatch} onClose={() => setSelectedBatch(null)} size={760}>
+      <Table<MarketSectorRankingItem> size="small" rowKey="id" dataSource={items} pagination={false}
+        scroll={{ x: 720 }} columns={[
+          { title: '排名', dataIndex: 'rankNo', width: 70 },
+          { title: '板块', dataIndex: 'sectorName', width: 180 },
+          { title: '涨跌', dataIndex: 'changeRate', width: 100, render: percent },
+          { title: '领涨标的', width: 220, render: (_, r) => <Space><Text>{r.leadingName ?? '-'}</Text>
+            {r.leadingSymbol && <Tag>{r.leadingSymbol}</Tag>}</Space> },
+          { title: '领涨幅', dataIndex: 'leadingChangeRate', width: 100, render: percent },
+        ]} />
+    </Drawer>
+  </Space>;
 }
 
 const indicatorOptions: { value: SectorRankIndicator; label: string }[] = [
@@ -209,6 +346,19 @@ function MarketSectorWatchTab() {
     finally { setBusyId(null); }
   };
 
+  const updateAutoCollection = async (row: MarketSectorWatch,
+    changes: { autoCollectEnabled?: boolean; collectIntervalMinutes?: number }) => {
+    setBusyId(String(row.id));
+    try {
+      await updateSectorWatchCollection(row.id, {
+        autoCollectEnabled: changes.autoCollectEnabled ?? row.autoCollectEnabled ?? false,
+        collectIntervalMinutes: changes.collectIntervalMinutes ?? row.collectIntervalMinutes ?? 15,
+      });
+      message.success('关注板块采集配置已保存'); await load();
+    } catch (e) { message.error((e as Error).message); }
+    finally { setBusyId(null); }
+  };
+
   const remove = async (row: MarketSectorWatch) => {
     setBusyId(String(row.id));
     try { await deleteSectorWatch(row.id); message.success('已取消关注'); await load(); }
@@ -234,9 +384,9 @@ function MarketSectorWatchTab() {
   return <Space orientation="vertical" style={{ width: '100%' }} size="middle">
     {error && <Alert type="error" title={error} action={<Button onClick={load}>重试</Button>} />}
     <Space><Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新列表</Button>
-      <Text type="secondary">每次手动刷新保存一份不可变快照，可用于后续板块强弱与资金趋势分析。</Text></Space>
+      <Text type="secondary">手动或按频率保存不可变成分快照，用于板块强弱与资金趋势分析。</Text></Space>
     <Table<MarketSectorWatch> size="small" rowKey="id" loading={loading} dataSource={data}
-      scroll={{ x: 1100 }} pagination={false} locale={{ emptyText: '尚未关注行业，请从“市场板块”添加' }}
+      scroll={{ x: 1420 }} pagination={false} locale={{ emptyText: '尚未关注行业，请从“市场板块”添加' }}
       columns={[
         { title: '市场', dataIndex: 'marketCode', width: 70, render: (v: string) => <Tag>{v}</Tag> },
         { title: '行业', dataIndex: 'sectorName', width: 170 },
@@ -246,6 +396,17 @@ function MarketSectorWatchTab() {
         { title: '净流入', width: 100, render: (_, r) => amount(r.latestSnapshot?.totalNetInflow) },
         { title: '成交额', width: 100, render: (_, r) => amount(r.latestSnapshot?.totalTurnoverAmount) },
         { title: '成分', width: 70, render: (_, r) => r.latestSnapshot?.constituentCount ?? '-' },
+        { title: '自动采集', width: 90, render: (_, r) => <Switch size="small" checked={r.autoCollectEnabled ?? false}
+          loading={busyId === String(r.id)} onChange={(autoCollectEnabled) => updateAutoCollection(r, { autoCollectEnabled })} /> },
+        { title: '频率', width: 130, render: (_, r) => <Select size="small" value={r.collectIntervalMinutes ?? 15}
+          options={frequencyOptions.filter((option) => option.value > 0)} style={{ width: 115 }}
+          disabled={busyId === String(r.id)}
+          onChange={(collectIntervalMinutes) => updateAutoCollection(r, { collectIntervalMinutes })} /> },
+        { title: '采集状态', width: 140, render: (_, r) => <Space orientation="vertical" size={0}>
+          <Tag color={r.collectionState === 'IDLE' ? 'green' : r.collectionState?.startsWith('BLOCKED') ? 'red' : 'orange'}>
+            {r.collectionState ?? 'IDLE'}</Tag>
+          {r.lastErrorCode && <Text type="danger" ellipsis style={{ maxWidth: 125 }}>{r.lastErrorCode}</Text>}
+        </Space> },
         { title: '启用', width: 70, render: (_, r) => <Switch size="small" checked={r.enabled}
           loading={busyId === String(r.id)} onChange={(checked) => toggle(r, checked)} /> },
         { title: '操作', width: 220, fixed: 'right', render: (_, r) => <Space size={0}>
@@ -268,6 +429,9 @@ function MarketSectorWatchTab() {
           { title: '成交额', dataIndex: 'totalTurnoverAmount', width: 100, render: amount },
           { title: '上涨/下跌', width: 100, render: (_, r) => `${r.riseCount ?? '-'}/${r.fallCount ?? '-'}` },
           { title: '领涨', dataIndex: 'leadingName', width: 120, render: (v?: string) => v ?? '-' },
+          { title: '触发', dataIndex: 'triggerType', width: 80, render: (v?: string) => <Tag>{v ?? 'MANUAL'}</Tag> },
+          { title: '质量', dataIndex: 'qualityStatus', width: 90,
+            render: (v?: string) => <Tag color={v === 'SUSPECT' ? 'orange' : 'green'}>{v ?? 'VALID'}</Tag> },
         ]} />
       <Title level={5} style={{ marginTop: 24 }}>最新成分</Title>
       <Table<MarketSectorMemberSnapshot> size="small" rowKey="id" dataSource={members} pagination={{ pageSize: 20 }}

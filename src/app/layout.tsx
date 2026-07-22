@@ -68,7 +68,7 @@ export function AppLayout() {
           onClick={({ key }) => navigate(key)}
         />
       </Sider>
-      <Layout>
+      <Layout style={{ minWidth: 0 }}>
         <Header style={{ padding: isMobile ? '0 12px' : '0 24px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography.Title level={4} style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
             量化交易辅助系统
@@ -79,7 +79,7 @@ export function AppLayout() {
             </Typography.Text>
           )}
         </Header>
-        <Content style={{ margin: isMobile ? 12 : 24 }}>
+        <Content style={{ margin: isMobile ? 12 : 24, minWidth: 0, overflow: 'hidden' }}>
           <Alert
             type="info"
             title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"

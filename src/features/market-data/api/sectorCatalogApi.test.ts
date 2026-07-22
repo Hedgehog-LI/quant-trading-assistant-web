@@ -3,7 +3,8 @@ import { client } from '../../../shared/api/client';
 import { clearAll } from '../../../shared/api/localStorageClient';
 import { saveSettings } from '../../settings/api/settingsApi';
 import { createSectorWatch, getIndustryPeers, listIndustryRankings, listSectorWatches,
-  refreshSectorWatch } from './sectorCatalogApi';
+  listSectorRankingConfigs, listSectorRankingHistory, refreshSectorWatch,
+  runSectorRanking, updateSectorRankingConfig, updateSectorWatchCollection } from './sectorCatalogApi';
 
 describe('sectorCatalogApi', () => {
   beforeEach(() => {
@@ -55,5 +56,46 @@ describe('sectorCatalogApi', () => {
     await refreshSectorWatch(7);
 
     expect(post).toHaveBeenCalledWith('/market-data/sector-catalog/watches/7/refresh');
+  });
+
+  it('remote 模式读写全市场板块采集配置和历史', async () => {
+    saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
+    const get = vi.spyOn(client, 'get').mockResolvedValue({
+      data: { success: true, code: 'SUCCESS', data: [] },
+    });
+    const put = vi.spyOn(client, 'put').mockResolvedValue({
+      data: { success: true, code: 'SUCCESS', data: { marketCode: 'CN' } },
+    });
+    const post = vi.spyOn(client, 'post').mockResolvedValue({
+      data: { success: true, code: 'SUCCESS', data: { id: 9 } },
+    });
+
+    await listSectorRankingConfigs();
+    await updateSectorRankingConfig('CN', { enabled: true, intradayIntervalMinutes: 10,
+      closeSnapshotEnabled: true, rankLimit: 100 });
+    await runSectorRanking('CN');
+    await listSectorRankingHistory({ market: 'CN', page: 2, size: 10 });
+
+    expect(get).toHaveBeenCalledWith('/market-data/sector-catalog/ranking-configs');
+    expect(put).toHaveBeenCalledWith('/market-data/sector-catalog/ranking-configs/CN', {
+      enabled: true, intradayIntervalMinutes: 10, closeSnapshotEnabled: true, rankLimit: 100,
+    });
+    expect(post).toHaveBeenCalledWith('/market-data/sector-catalog/ranking-configs/CN/run');
+    expect(get).toHaveBeenCalledWith('/market-data/sector-catalog/ranking-history', {
+      params: { page: 2, size: 10, market: 'CN' },
+    });
+  });
+
+  it('remote 模式更新关注板块自动采集频率', async () => {
+    saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
+    const put = vi.spyOn(client, 'put').mockResolvedValue({
+      data: { success: true, code: 'SUCCESS', data: { id: 7 } },
+    });
+
+    await updateSectorWatchCollection(7, { autoCollectEnabled: true, collectIntervalMinutes: 15 });
+
+    expect(put).toHaveBeenCalledWith('/market-data/sector-catalog/watches/7/collection', {
+      autoCollectEnabled: true, collectIntervalMinutes: 15,
+    });
   });
 });
