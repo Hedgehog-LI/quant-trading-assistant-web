@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/run-ai-evidence-command.mjs",
+  "taskId": "FRONTEND-GOVERNANCE-BOOTSTRAP-20260802",
+  "roleRunId": "FV-WEB-001",
+  "sessionId": "FV-WEB-001-SESSION",
+  "testId": "TEST-07",
+  "candidateMode": "SNAPSHOT",
+  "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+  "command": [
+    "node",
+    "-e",
+    "const fs=require('fs');const{execSync}=require('child_process');const g=fs.readFileSync('GOVERNANCE_SOURCE.md','utf8').includes('Smoke-validated');const src=execSync('git diff 0cf382f..HEAD --name-only -- src/',{encoding:'utf8'}).trim()==='';console.log(g&&src?'Smoke-validated OK':'FAIL')"
+  ],
+  "startedAt": "2026-08-02T16:24:28.812Z",
+  "finishedAt": "2026-08-02T16:24:29.147Z",
+  "exitCode": 0,
+  "result": "PASS",
+  "timedOut": false,
+  "stdoutSha256": "1e793f75792e1705340e24c2e411b5cb883e754742826d291ef3df509d5792e1",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "reportFiles": [],
+  "expectedSelectors": [
+    "Smoke-validated"
+  ],
+  "observedSelectors": [
+    "Smoke-validated"
+  ],
+  "selectorError": "",
+  "candidateBefore": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "12fa715e4edb054f2175653006f73a6d144096f21107093c413785f973a04280",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateAfter": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "12fa715e4edb054f2175653006f73a6d144096f21107093c413785f973a04280",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateUnchanged": true
+}

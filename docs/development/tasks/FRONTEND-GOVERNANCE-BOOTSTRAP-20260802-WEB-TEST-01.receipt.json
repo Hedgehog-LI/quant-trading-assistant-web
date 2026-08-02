@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/run-ai-evidence-command.mjs",
+  "taskId": "FRONTEND-GOVERNANCE-BOOTSTRAP-20260802",
+  "roleRunId": "FV-WEB-001",
+  "sessionId": "FV-WEB-001-SESSION",
+  "testId": "TEST-01",
+  "candidateMode": "SNAPSHOT",
+  "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+  "command": [
+    "node",
+    "scripts/run-ai-governance-gates.mjs"
+  ],
+  "startedAt": "2026-08-02T16:24:07.901Z",
+  "finishedAt": "2026-08-02T16:24:18.236Z",
+  "exitCode": 0,
+  "result": "PASS",
+  "timedOut": false,
+  "stdoutSha256": "f43872b42f3f4768b54a8938d85cd69c7882c573a296677cca7381c246d046a5",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "reportFiles": [],
+  "expectedSelectors": [
+    "QTA AI governance gates passed."
+  ],
+  "observedSelectors": [
+    "QTA AI governance gates passed."
+  ],
+  "selectorError": "",
+  "candidateBefore": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "1fe2f603a12e57dfe2085dc72c6b3a0c1a81706f77bdc61bf37dfda7413d0272",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateAfter": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "1fe2f603a12e57dfe2085dc72c6b3a0c1a81706f77bdc61bf37dfda7413d0272",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateUnchanged": true
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/run-ai-evidence-command.mjs",
+  "taskId": "FRONTEND-GOVERNANCE-BOOTSTRAP-20260802",
+  "roleRunId": "FV-WEB-001",
+  "sessionId": "FV-WEB-001-SESSION",
+  "testId": "TEST-04",
+  "candidateMode": "SNAPSHOT",
+  "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+  "command": [
+    "node",
+    "scripts/validate-ai-governance.mjs"
+  ],
+  "startedAt": "2026-08-02T16:24:20.640Z",
+  "finishedAt": "2026-08-02T16:24:21.387Z",
+  "exitCode": 0,
+  "result": "PASS",
+  "timedOut": false,
+  "stdoutSha256": "5129e8503c87ed33351c9313f7910bc43605f35f6844117dcdcb55004e30cff0",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "reportFiles": [],
+  "expectedSelectors": [
+    "AI governance validation passed:"
+  ],
+  "observedSelectors": [
+    "AI governance validation passed:"
+  ],
+  "selectorError": "",
+  "candidateBefore": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "56136803d0cfd1a728b9b8c789900bd4615319062406ace7c958104e197af551",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateAfter": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "56136803d0cfd1a728b9b8c789900bd4615319062406ace7c958104e197af551",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateUnchanged": true
+}

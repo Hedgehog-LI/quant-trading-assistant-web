@@ -4,7 +4,7 @@
   "controlPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-CONTROL.json",
   "startedAt": "2026-08-02T15:00:00Z",
   "lane": "L0",
-  "lifecycleState": "CONTRACT_FROZEN",
+  "lifecycleState": "DELIVERY_READY",
   "contract": {
     "path": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-CONTRACT.md",
     "version": "1",
@@ -46,7 +46,13 @@
   },
   "transitionHistory": [
     {"sequence": 1, "from": "CONTEXT_READY", "to": "CONTRACT_DRAFTED", "at": "2026-08-02T15:00:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"},
-    {"sequence": 2, "from": "CONTRACT_DRAFTED", "to": "CONTRACT_FROZEN", "at": "2026-08-02T16:15:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"}
+    {"sequence": 2, "from": "CONTRACT_DRAFTED", "to": "CONTRACT_FROZEN", "at": "2026-08-02T16:15:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"},
+    {"sequence": 3, "from": "CONTRACT_FROZEN", "to": "IMPLEMENTING", "at": "2026-08-02T16:16:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"},
+    {"sequence": 4, "from": "IMPLEMENTING", "to": "SELF_CHECKED", "at": "2026-08-02T16:17:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"},
+    {"sequence": 5, "from": "SELF_CHECKED", "to": "CANDIDATE_FROZEN", "at": "2026-08-02T16:18:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"},
+    {"sequence": 6, "from": "CANDIDATE_FROZEN", "to": "VERIFIED", "at": "2026-08-02T16:27:00Z", "actor": "qta-final-verifier/FV-WEB-001"},
+    {"sequence": 7, "from": "VERIFIED", "to": "FINALIZED", "at": "2026-08-02T16:28:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"},
+    {"sequence": 8, "from": "FINALIZED", "to": "DELIVERY_READY", "at": "2026-08-02T16:28:30Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"}
   ],
   "candidate": {
     "mode": "SNAPSHOT",
@@ -73,55 +79,97 @@
     "weeklyAllowancePercent": null
   },
   "repairHistory": [],
-  "roleRuns": [],
+  "roleRuns": [
+    {
+      "roleRunId": "FV-WEB-001",
+      "dispatchId": "DISP-FV-WEB-001",
+      "sessionId": "FV-WEB-001-SESSION",
+      "role": "FINAL_VERIFIER",
+      "generation": 1,
+      "executorType": "SUBAGENT",
+      "agentDefinition": ".zcode/agents/qta-final-verifier.md",
+      "sliceId": "",
+      "executionOutcome": "COMPLETED",
+      "capability": "VERIFY_EXECUTE",
+      "contextMode": "FRESH",
+      "enforcement": "ADVISORY",
+      "compensatingIsolation": "fresh non-implementing subagent context; bypassPermissions for gate scripts only",
+      "waitCalls": 0,
+      "maxShellPollsForOneCommand": 1,
+      "compactionCount": 0,
+      "status": "COMPLETED",
+      "artifactAccepted": true,
+      "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-VERIFICATION.md",
+      "artifactSha256": "d2337222763b55cb3001c666a6ef8cb07759c35baa1ea05e3476ff4151e0660d",
+      "startedAt": "2026-08-02T16:22:00Z",
+      "finishedAt": "2026-08-02T16:27:00Z",
+      "runtimeReceiptPath": "",
+      "dispatchReceiptPath": ".git/qta-governance/dispatches/7e35846862cb00585b185cba13225557ce9c78982b6ad55f1c6efa7e4a8b96d4/2e161bb424df15cfa452126742859bf2bc47299f196a1873d8ac487c8950103c.json"
+    }
+  ],
   "review": {
     "omitted": true,
-    "omissionReason": "L0 contract-lite: deliverable (governance bootstrap) already complete on candidate a99ec32; this web ledger verifies + finalizes only, omitting test-design/review",
-    "generation": 0,
-    "candidateIdentity": "",
-    "functionalVerdict": "NOT_VERIFIED",
-    "architectureVerdict": "NOT_VERIFIED",
-    "artifactPath": "",
-    "artifactSha256": "",
-    "architectureGateSha256": "",
+    "omissionReason": "L0 contract-lite: deliverable (governance bootstrap) already complete; this web ledger verifies + finalizes only, omitting test-design/review",
+    "generation": 1,
+    "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+    "functionalVerdict": "PASS",
+    "architectureVerdict": "PASS",
+    "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-VERIFICATION.md",
+    "artifactSha256": "d2337222763b55cb3001c666a6ef8cb07759c35baa1ea05e3476ff4151e0660d",
+    "architectureGateSha256": "6ba8d10ee0dc30f42310c80453128cdc2cc989451569a8ca9a615be20a24bdcc",
     "findingIds": []
   },
   "architectureGate": {
     "required": true,
-    "candidateIdentity": "",
-    "status": "NOT_RUN",
-    "exitCode": -1,
+    "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+    "status": "PASS",
+    "exitCode": 0,
     "errorCount": 0,
     "warningCount": 0,
     "warningDispositions": [],
-    "reportPath": "",
-    "reportSha256": "",
+    "reportPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-web-arch-report.json",
+    "reportSha256": "6ba8d10ee0dc30f42310c80453128cdc2cc989451569a8ca9a615be20a24bdcc",
     "generatedBy": "scripts/check-ai-architecture.mjs"
   },
   "verification": {
-    "candidateIdentity": "",
-    "verdict": "NOT_VERIFIED",
-    "deliveryPermitted": false,
-    "functionalVerdict": "NOT_VERIFIED",
-    "architectureVerdict": "NOT_VERIFIED",
-    "artifactPath": "",
-    "artifactSha256": "",
-    "architectureGateSha256": "",
+    "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+    "verdict": "ACCEPTED",
+    "deliveryPermitted": true,
+    "functionalVerdict": "PASS",
+    "architectureVerdict": "PASS",
+    "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-VERIFICATION.md",
+    "artifactSha256": "d2337222763b55cb3001c666a6ef8cb07759c35baa1ea05e3476ff4151e0660d",
+    "architectureGateSha256": "6ba8d10ee0dc30f42310c80453128cdc2cc989451569a8ca9a615be20a24bdcc",
     "dimensions": {
-      "STATIC": {"required": true, "status": "NOT_VERIFIED"},
-      "AUTOMATION": {"required": true, "status": "NOT_VERIFIED"},
+      "STATIC": {"required": true, "status": "PASS"},
+      "AUTOMATION": {"required": true, "status": "PASS"},
       "RUNTIME": {"required": false, "status": "NOT_REQUIRED"},
       "DEPLOYMENT": {"required": false, "status": "NOT_REQUIRED"}
     }
   },
-  "testEvidence": [],
+  "testEvidence": [
+    {"testId": "TEST-01", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-01.receipt.json", "receiptSha256": "579fec306d540c62fe18c580dc47287e6fd385a1e31f008ad013e87a3d229469", "observedSelectors": ["QTA AI governance gates passed."]},
+    {"testId": "TEST-02", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-02.receipt.json", "receiptSha256": "9ec4354990e22cbae1844ea5229fcc5ddf951c17a6aa6ee5e724bcf00e26d53f", "observedSelectors": ["0 byte diffs"]},
+    {"testId": "TEST-03", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-03.receipt.json", "receiptSha256": "fa3ef41551cd93c7c202ce901136f8101d0abea16611829ecea29531f88fa9af", "observedSelectors": ["claude/settings.local.json"]},
+    {"testId": "TEST-04", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-04.receipt.json", "receiptSha256": "1fb2a7eede18100a5ccc1588b98e3174f6dba128206922b2b8f49be3803436c", "observedSelectors": ["AI governance validation passed:"]},
+    {"testId": "TEST-05a", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-05a.receipt.json", "receiptSha256": "6f1a5ccf90a0e245f81b5f20a26a5094e704c6157c2ee1e7bc598f9c3fc1d3d6", "observedSelectors": ["typecheck"]},
+    {"testId": "TEST-05b", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-05b.receipt.json", "receiptSha256": "f94dc62f216ac844cb4aac0ad4f5acd51a530885896d61fdfb664b0b4865a995", "observedSelectors": ["lint"]},
+    {"testId": "TEST-05c", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-05c.receipt.json", "receiptSha256": "bff8459cd4a8150efba1eb17be13a47a5a35f2b2f726d21e253e881cd08b8094", "observedSelectors": ["vitest"]},
+    {"testId": "TEST-05d", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-05d.receipt.json", "receiptSha256": "1e0bf3bc850f0a3b4fd86db2bd8a5aed886bfabf0f8a1d4e0dc016d751d11cdc", "observedSelectors": ["vite build"]},
+    {"testId": "TEST-07", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-07.receipt.json", "receiptSha256": "0633b6f7261f8c666d5b60a0def89c09950f79ecbb53c5fa78c8b55e3877d8fa", "observedSelectors": ["Smoke-validated"]},
+    {"testId": "TEST-08b", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "executedByRoleRunId": "FV-WEB-001", "result": "PASS", "exitCode": 0, "receiptPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-08b.receipt.json", "receiptSha256": "e48edbfca695fd522a38ea55c6c2012fea5502d72020675d7a9a093ed1c834bd", "observedSelectors": ["errorCount"]}
+  ],
   "finalization": {
-    "status": "NOT_STARTED",
-    "candidateIdentity": "",
-    "artifactPath": "",
-    "artifactSha256": "",
-    "completedAt": "",
-    "changedPaths": []
+    "status": "COMPLETED",
+    "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+    "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-FINALIZATION.md",
+    "artifactSha256": "1079fb70e64d33f29be13fbef9be2f3908518637c3fed3371aba54fc59296580",
+    "completedAt": "2026-08-02T16:28:00Z",
+    "changedPaths": [".agents/", ".zcode/", ".claude/", "scripts/", "docs/", "AGENTS.md", "CLAUDE.md", "GOVERNANCE_SOURCE.md", ".gitignore", "vite.config.ts"]
   },
-  "evidence": []
+  "evidence": [
+    {"evidenceId": "EV-W1", "acId": "AC-W1", "kind": "AUTOMATION", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "sourceType": "TEST_RECEIPT", "sourceId": "TEST-01", "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-01.receipt.json", "artifactSha256": "579fec306d540c62fe18c580dc47287e6fd385a1e31f008ad013e87a3d229469"},
+    {"evidenceId": "EV-W2", "acId": "AC-W2", "kind": "STATIC", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "sourceType": "TEST_RECEIPT", "sourceId": "TEST-02", "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-02.receipt.json", "artifactSha256": "9ec4354990e22cbae1844ea5229fcc5ddf951c17a6aa6ee5e724bcf00e26d53f"},
+    {"evidenceId": "EV-W3", "acId": "AC-W3", "kind": "AUTOMATION", "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8", "sourceType": "TEST_RECEIPT", "sourceId": "TEST-05a", "artifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-WEB-TEST-05a.receipt.json", "artifactSha256": "6f1a5ccf90a0e245f81b5f20a26a5094e704c6157c2ee1e7bc598f9c3fc1d3d6"}
+  ]
 }

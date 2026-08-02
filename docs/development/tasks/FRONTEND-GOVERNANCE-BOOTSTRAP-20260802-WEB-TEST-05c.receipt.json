@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/run-ai-evidence-command.mjs",
+  "taskId": "FRONTEND-GOVERNANCE-BOOTSTRAP-20260802",
+  "roleRunId": "FV-WEB-001",
+  "sessionId": "FV-WEB-001-SESSION",
+  "testId": "TEST-05c",
+  "candidateMode": "SNAPSHOT",
+  "candidateIdentity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+  "command": [
+    "npm",
+    "run",
+    "test"
+  ],
+  "startedAt": "2026-08-02T16:25:15.059Z",
+  "finishedAt": "2026-08-02T16:25:35.313Z",
+  "exitCode": 0,
+  "result": "PASS",
+  "timedOut": false,
+  "stdoutSha256": "1b78a5a8d84e72915093029a964ba9430ce91c00f14ee46368fea3f908403dfe",
+  "stderrSha256": "f7cedde6917e23edb30141fc998c299646e3a914807a2d8ac8cf4fe8bb76c5f4",
+  "reportFiles": [],
+  "expectedSelectors": [
+    "vitest"
+  ],
+  "observedSelectors": [
+    "vitest"
+  ],
+  "selectorError": "",
+  "candidateBefore": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "67e1cc6c86af0e630a966c638af9351f2da1e8152efbc895f483a6aa0b3ff6a1",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateAfter": {
+    "head": "f2ae15fbf86b00a0ff2d586e9360d0a12ca1462f",
+    "tree": "a5bd2601c0a2f6c32b37e388146d41f6cd05348b",
+    "statusSha256": "67e1cc6c86af0e630a966c638af9351f2da1e8152efbc895f483a6aa0b3ff6a1",
+    "diffSha256": "8fbfcc7c9ed410003905dc2c1554c063392638fe70eeee9d54a302c5ed7be4ad"
+  },
+  "candidateUnchanged": true
+}
