@@ -49,15 +49,15 @@
     {"sequence": 2, "from": "CONTRACT_DRAFTED", "to": "CONTRACT_FROZEN", "at": "2026-08-02T16:15:00Z", "actor": "zcode-parent-FRONTEND-GOVERNANCE-BOOTSTRAP-20260802"}
   ],
   "candidate": {
-    "mode": "COMMIT",
+    "mode": "SNAPSHOT",
     "generation": 1,
-    "identity": "a99ec322dce312b5f7cfea693f98535f3d5764c9",
-    "commit": "a99ec322dce312b5f7cfea693f98535f3d5764c9",
-    "treeHash": "744d20590ab206921e9a35cf66f60238bf9fde22",
-    "patchSha256": "2f1c9b2a3008c7378c60106ea17fbfae9aa16bbb36846fa5a5a2c5b42aaf8ad2",
-    "manifestPath": "",
-    "manifestSha256": "",
-    "entrySetSha256": "",
+    "identity": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+    "commit": "",
+    "treeHash": "",
+    "patchSha256": "",
+    "manifestPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-web-candidate-manifest.json",
+    "manifestSha256": "f36e6cfa7cbb563e38920dcf852d332a4e43ee44ca4efa996015be05114c3ba8",
+    "entrySetSha256": "322c40ac29910e6d9f006889bc60c9b54d9ea749efda72682b1362f05e6eedef",
     "diffArtifactPath": "docs/development/tasks/FRONTEND-GOVERNANCE-BOOTSTRAP-20260802-web-candidate-diff.patch",
     "diffArtifactSha256": "2f1c9b2a3008c7378c60106ea17fbfae9aa16bbb36846fa5a5a2c5b42aaf8ad2"
   },
