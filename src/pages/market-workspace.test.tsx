@@ -1,12 +1,19 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TaskItemsDrawer } from './market-workspace';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { TaskItemsDrawer, PlansTab } from './market-workspace';
+import { buildPlanInput } from '../features/market-data/utils/syncPlanForm';
+import { searchSecurities } from '../features/market-data/api/securityDirectoryApi';
+import { saveSettings } from '../features/settings/api/settingsApi';
+import { clearAll } from '../shared/api/localStorageClient';
 import type { MarketDataSyncPlan, MarketDataSyncTaskItem } from '../shared/types/domain';
 
 // Mock the workbench API module
 const mockApi = vi.hoisted(() => ({
   listTaskItems: vi.fn(),
   reconcileTask: vi.fn(),
+  createSyncPlan: vi.fn(),
+  updateSyncPlan: vi.fn(),
+  listSyncPlans: vi.fn(),
 }));
 
 vi.mock('../features/market-data/api/workbenchApi', async () => {
@@ -17,6 +24,20 @@ vi.mock('../features/market-data/api/workbenchApi', async () => {
     ...actual,
     listTaskItems: mockApi.listTaskItems,
     reconcileTask: mockApi.reconcileTask,
+    createSyncPlan: mockApi.createSyncPlan,
+    updateSyncPlan: mockApi.updateSyncPlan,
+    listSyncPlans: mockApi.listSyncPlans,
+  };
+});
+
+// Mock the security directory API so SecuritySelector never touches the network/seed catalog.
+vi.mock('../features/market-data/api/securityDirectoryApi', async () => {
+  const actual = await vi.importActual<typeof import('../features/market-data/api/securityDirectoryApi')>(
+    '../features/market-data/api/securityDirectoryApi',
+  );
+  return {
+    ...actual,
+    searchSecurities: vi.fn(),
   };
 });
 
@@ -173,5 +194,134 @@ describe('TaskItemsDrawer', () => {
     await waitFor(() => {
       expect(screen.getByText(/收敛失败/)).toBeInTheDocument();
     });
+  });
+});
+
+// ==================== 采集计划 SecuritySelector 集成 (RS-05) ====================
+
+/**
+ * Advance fake timers past the SecuritySelector 250ms debounce and flush the
+ * microtask queue that resolves the mocked searchSecurities promise + React
+ * state updates. Under fake timers waitFor cannot self-advance, so we settle
+ * microtasks via repeated `await Promise.resolve()`.
+ */
+async function flushSelectorDebounce(ms = 250) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+  });
+}
+
+describe('采集计划 SecuritySelector 集成', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    clearAll();
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    mockApi.listSyncPlans.mockResolvedValue({ items: [], total: 0, page: 1, size: 20 });
+    mockApi.createSyncPlan.mockResolvedValue({} as never);
+    mockApi.updateSyncPlan.mockResolvedValue({} as never);
+    vi.mocked(searchSecurities).mockReset();
+    vi.mocked(searchSecurities).mockResolvedValue({
+      items: [
+        {
+          canonicalSymbol: 'SH.603308',
+          symbol: '603308',
+          displayName: '应流股份',
+          name: '应流股份',
+          market: 'SH',
+          exchange: 'SSE',
+          currency: 'CNY',
+          securityType: 'STOCK',
+          listStatus: 'LISTED',
+          matchedBy: 'FORMAL_NAME_EXACT',
+        },
+      ],
+      catalogStatus: 'READY',
+      catalogUpdatedAt: '2026-07-29T10:00:00',
+      stale: false,
+      degraded: false,
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('采集计划 scope：SecuritySelector 选中后 buildPlanInput 的 scopeJson 含正确 canonical symbol', async () => {
+    await act(async () => {
+      render(<PlansTab />);
+      // 让 useEffect(listSyncPlans) 的 microtask 在 fake timers 下落地。
+      for (let i = 0; i < 10; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(mockApi.listSyncPlans).toHaveBeenCalled();
+    // 打开新建 Drawer
+    fireEvent.click(screen.getByText('新建采集计划'));
+    await flushSelectorDebounce(0);
+    const selectorInput = screen.getByPlaceholderText(/检索证券/) as HTMLInputElement;
+
+    // 驱动 SecuritySelector：输入 → debounce → 点击 data-canonical-symbol="SH.603308"
+    fireEvent.change(selectorInput, { target: { value: '应流' } });
+    await flushSelectorDebounce();
+    const listItem = screen.getByTestId('security-selector-results')
+      .querySelector('[data-canonical-symbol="SH.603308"]') as HTMLElement;
+    expect(listItem).toBeTruthy();
+    fireEvent.click(listItem);
+    await flushSelectorDebounce(0);
+
+    // SecurityVerificationField 是 symbols Form.Item 的受控子组件，会把 form 的 symbols
+    // 值渲染成“已选标的”下的 Tag。这里读取它，证明 selector → form 字段写入成功。
+    // 限定在“已选标的”区块内，避免命中 SecuritySelector 自身的已选/结果 Tag。
+    const selectedLabel = Array.from(document.querySelectorAll('.ant-drawer-body *'))
+      .find((el) => el.childNodes.length === 1 && el.textContent?.trim() === '已选标的') as HTMLElement | undefined;
+    expect(selectedLabel).toBeTruthy();
+    // “已选标的”与 Tag 列表在同一父容器内。
+    const selectedRegion = selectedLabel!.parentElement!;
+    const selectedTags = Array.from(selectedRegion.querySelectorAll('.ant-tag'))
+      .map((t) => t.textContent ?? '');
+    expect(selectedTags).toContain('SH.603308');
+
+    // 用真实生产函数 buildPlanInput 把该 symbols 值转成 scopeJson，断言 canonical symbol 进入。
+    // （采用 TaskPacket 允许的回退断言：跳过 antd v6 Select/日期保存的脆弱事件交互。）
+    const symbolsValue = selectedTags.join(', ');
+    const input = buildPlanInput({
+      planName: '日K计划-选择器',
+      taskType: 'DAILY_BAR_BACKFILL',
+      provider: 'LONGPORT',
+      symbols: symbolsValue,
+      startDate: '2026-07-01',
+      endDate: '2026-07-10',
+      adjustType: 'NONE',
+    });
+    const scope = JSON.parse(input.scopeJson);
+    expect(scope.symbols).toContain('SH.603308');
+  });
+
+  it('采集计划/板块成员选择过程不触发 quote/K 线同步写', async () => {
+    await act(async () => {
+      render(<PlansTab />);
+      for (let i = 0; i < 10; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(mockApi.listSyncPlans).toHaveBeenCalled();
+    fireEvent.click(screen.getByText('新建采集计划'));
+    await flushSelectorDebounce(0);
+    const selectorInput = screen.getByPlaceholderText(/检索证券/) as HTMLInputElement;
+
+    // 仅驱动选择过程，不提交
+    fireEvent.change(selectorInput, { target: { value: '应流' } });
+    await flushSelectorDebounce();
+    const listItem = screen.getByTestId('security-selector-results')
+      .querySelector('[data-canonical-symbol="SH.603308"]') as HTMLElement;
+    fireEvent.click(listItem);
+    await flushSelectorDebounce(0);
+
+    // 未提交：createSyncPlan / updateSyncPlan 都不应被调用
+    expect(mockApi.createSyncPlan).not.toHaveBeenCalled();
+    expect(mockApi.updateSyncPlan).not.toHaveBeenCalled();
   });
 });

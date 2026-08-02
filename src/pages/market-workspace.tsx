@@ -10,6 +10,7 @@ import {
 } from '../features/market-data/api/workbenchApi';
 import { buildPlanInput, fallbackConfigurationErrors, planToDraft, type SyncPlanDraft } from '../features/market-data/utils/syncPlanForm';
 import { SecurityVerificationField } from '../features/market-data/components/SecurityVerificationField';
+import { SecuritySelector } from '../shared/components/SecuritySelector';
 import type {
   WorkbenchOverview, MarketDataSyncPlan, MarketDataSyncTask, MarketDataSyncTaskItem,
   StockMinuteBar,
@@ -135,7 +136,7 @@ function OverviewTab() {
 
 // ==================== 采集计划 Tab ====================
 
-function PlansTab() {
+export function PlansTab() {
   const [data, setData] = useState<PageResult<MarketDataSyncPlan>>({ items: [], total: 0, page: 1, size: 20 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -302,6 +303,17 @@ function PlansTab() {
             ]} />
           </Form.Item>
           <Form.Item name="provider" label="Provider" rules={[{ required: true }]}><Select options={[{ value: 'LONGPORT', label: 'LongPort（只读行情）' }]} /></Form.Item>
+          <Form.Item label="从目录选择标的">
+            <SecuritySelector
+              onChange={(symbol) => {
+                if (!symbol) return;
+                const current = (form.getFieldValue('symbols') ?? '').trim();
+                const existing = current.split(/[\s,，;；]+/).filter(Boolean);
+                if (existing.includes(symbol)) return;
+                form.setFieldValue('symbols', current ? `${current}, ${symbol}` : symbol);
+              }}
+            />
+          </Form.Item>
           <Form.Item name="symbols" label="标的" rules={[{ required: true, message: '至少验证并加入一个标的' }]}>
             <SecurityVerificationField remoteMode={remoteMode} taskType={taskType} />
           </Form.Item>

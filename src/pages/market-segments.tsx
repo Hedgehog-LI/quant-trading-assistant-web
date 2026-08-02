@@ -17,6 +17,7 @@ import {
 import type { MarketSegment, MarketSegmentMember, EntityId, MarketSectorMemberSnapshot,
   MarketSectorPeer, MarketSectorRank, MarketSectorRankingBatch, MarketSectorRankingConfig,
   MarketSectorRankingItem, MarketSectorSnapshot, MarketSectorWatch } from '../shared/types/domain';
+import { SecuritySelector } from '../shared/components/SecuritySelector';
 
 interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
 
@@ -566,7 +567,7 @@ function SegmentListTab() {
   );
 }
 
-function MembersDrawer({ segment, onClose }: { segment: MarketSegment | null; onClose: () => void }) {
+export function MembersDrawer({ segment, onClose }: { segment: MarketSegment | null; onClose: () => void }) {
   const [members, setMembers] = useState<MarketSegmentMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -639,6 +640,7 @@ function MembersDrawer({ segment, onClose }: { segment: MarketSegment | null; on
       )}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space orientation="vertical" style={{ width: '100%' }}>
+          <SecuritySelector value={symbol} onChange={(s) => setSymbol(s)} />
           <Input placeholder="如 SH.600519 / HK.02498 / US.AAPL" value={symbol} onChange={(e) => setSymbol(e.target.value)} disabled={adding} />
           <Input placeholder="备注（可选）" value={remark} onChange={(e) => setRemark(e.target.value)} disabled={adding} />
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} loading={adding} disabled={adding}>添加成员</Button>

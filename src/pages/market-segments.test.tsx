@@ -1,5 +1,9 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { searchSecurities } from '../features/market-data/api/securityDirectoryApi';
+import { saveSettings } from '../features/settings/api/settingsApi';
+import { clearAll } from '../shared/api/localStorageClient';
+import type { MarketSegment } from '../shared/types/domain';
 
 const mockApi = vi.hoisted(() => ({
   listSegments: vi.fn(),
@@ -14,8 +18,19 @@ const mockApi = vi.hoisted(() => ({
 
 vi.mock('../features/market-data/api/segmentApi', () => mockApi);
 
+// Mock the security directory API so SecuritySelector never touches the network/seed catalog.
+vi.mock('../features/market-data/api/securityDirectoryApi', async () => {
+  const actual = await vi.importActual<typeof import('../features/market-data/api/securityDirectoryApi')>(
+    '../features/market-data/api/securityDirectoryApi',
+  );
+  return {
+    ...actual,
+    searchSecurities: vi.fn(),
+  };
+});
+
 import { message as antdMessage } from 'antd';
-import { MarketSegmentsPage } from './market-segments';
+import { MarketSegmentsPage, MembersDrawer } from './market-segments';
 
 vi.spyOn(antdMessage, 'success').mockImplementation(() => ({} as never));
 vi.spyOn(antdMessage, 'error').mockImplementation(() => ({} as never));
@@ -206,5 +221,120 @@ describe('MarketSegmentsPage 行为测试', () => {
     // 清理: resolve pending + unmount 避免悬空更新
     await act(async () => { resolveRemove(); });
     unmount();
+  });
+});
+
+// ==================== 板块成员 SecuritySelector 集成 (RS-05) ====================
+
+/**
+ * Advance fake timers past the SecuritySelector 250ms debounce and flush the
+ * microtask queue that resolves the mocked searchSecurities promise + React
+ * state updates. Under fake timers waitFor cannot self-advance, so we settle
+ * microtasks via repeated `await Promise.resolve()`.
+ */
+async function flushSelectorDebounce(ms = 250) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+  });
+}
+
+describe('板块成员 SecuritySelector 集成', () => {
+  const stubSegment: MarketSegment = {
+    id: 'seg-selector',
+    segmentName: '选择器测试板块',
+    segmentType: 'CUSTOM',
+    enabled: true,
+    memberCount: 0,
+    segmentCode: 'SEG_SEL',
+    createdAt: '',
+    updatedAt: '',
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    clearAll();
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    mockApi.listSegmentMembers.mockResolvedValue([]);
+    mockApi.addSegmentMember.mockResolvedValue({ id: 'm-sel', segmentId: stubSegment.id, canonicalSymbol: 'SH.603308', sortOrder: 0, createdAt: '' });
+    vi.mocked(searchSecurities).mockReset();
+    vi.mocked(searchSecurities).mockResolvedValue({
+      items: [
+        {
+          canonicalSymbol: 'SH.603308',
+          symbol: '603308',
+          displayName: '应流股份',
+          name: '应流股份',
+          market: 'SH',
+          exchange: 'SSE',
+          currency: 'CNY',
+          securityType: 'STOCK',
+          listStatus: 'LISTED',
+          matchedBy: 'FORMAL_NAME_EXACT',
+        },
+      ],
+      catalogStatus: 'READY',
+      catalogUpdatedAt: '2026-07-29T10:00:00',
+      stale: false,
+      degraded: false,
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('板块成员：SecuritySelector 选中后 addSegmentMember 提交的 canonical symbol 与所选一致', async () => {
+    await act(async () => {
+      render(<MembersDrawer segment={stubSegment} onClose={vi.fn()} />);
+      // 让 useEffect(listSegmentMembers) 的 microtask 在 fake timers 下落地。
+      for (let i = 0; i < 10; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    const selectorInput = screen.getByPlaceholderText(/检索证券/) as HTMLInputElement;
+
+    // 驱动 SecuritySelector：输入 → debounce → 点击 data-canonical-symbol="SH.603308"
+    fireEvent.change(selectorInput, { target: { value: '应流' } });
+    await flushSelectorDebounce();
+    const listItem = screen.getByTestId('security-selector-results')
+      .querySelector('[data-canonical-symbol="SH.603308"]') as HTMLElement;
+    expect(listItem).toBeTruthy();
+    fireEvent.click(listItem);
+    await flushSelectorDebounce(0);
+
+    // 点击添加成员
+    const addBtn = Array.from(document.querySelectorAll('.ant-drawer button'))
+      .find((b) => b.textContent?.replace(/\s/g, '') === '添加成员') as HTMLButtonElement;
+    expect(addBtn).toBeTruthy();
+    await act(async () => { fireEvent.click(addBtn); });
+    // 让 addSegmentMember promise 的 microtask 落地。
+    await flushSelectorDebounce(0);
+
+    // 断言 addSegmentMember 被调用，canonicalSymbol 与所选一致
+    expect(mockApi.addSegmentMember).toHaveBeenCalledTimes(1);
+    expect(mockApi.addSegmentMember).toHaveBeenCalledWith(stubSegment.id, expect.objectContaining({ canonicalSymbol: 'SH.603308' }));
+  });
+
+  it('板块成员：仅选择不提交时 addSegmentMember 不被调用', async () => {
+    await act(async () => {
+      render(<MembersDrawer segment={stubSegment} onClose={vi.fn()} />);
+      for (let i = 0; i < 10; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    const selectorInput = screen.getByPlaceholderText(/检索证券/) as HTMLInputElement;
+
+    fireEvent.change(selectorInput, { target: { value: '应流' } });
+    await flushSelectorDebounce();
+    const listItem = screen.getByTestId('security-selector-results')
+      .querySelector('[data-canonical-symbol="SH.603308"]') as HTMLElement;
+    fireEvent.click(listItem);
+    await flushSelectorDebounce(0);
+
+    // 未点添加：addSegmentMember 不应被调用
+    expect(mockApi.addSegmentMember).not.toHaveBeenCalled();
   });
 });

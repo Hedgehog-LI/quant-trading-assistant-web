@@ -11,6 +11,7 @@ import {
   getAlerts, resolveAlert, createDailyBarSync,
 } from '../features/market-data/api/marketDataApi';
 import { normalizeCanonicalSymbol, parseCanonicalSymbols } from '../features/market-data/utils/canonicalSymbol';
+import { SecuritySelector } from '../shared/components/SecuritySelector';
 import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
   ProviderStatus, StockQuoteSnapshot, MarketDataSyncTask, MarketDataAlert } from '../shared/types/domain';
 
@@ -65,7 +66,7 @@ export function MarketDataPage() {
 }
 
 // ===== 最新价快照 Tab =====
-function QuoteSnapshotsTab() {
+export function QuoteSnapshotsTab() {
   const [snapshots, setSnapshots] = useState<StockQuoteSnapshot[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -132,6 +133,7 @@ function QuoteSnapshotsTab() {
           <Input.TextArea placeholder="输入证券代码，逗号或换行分隔（如 SH.600519、HK.02498、US.AAPL）"
             style={{ width: 400 }} rows={1} value={fetchSymbols}
             onChange={(e) => setFetchSymbols(e.target.value)} />
+          <SecuritySelector value={fetchSymbols} onChange={(symbol) => setFetchSymbols(symbol)} />
           <Popconfirm title="拉取并保存最新行情？不覆盖手工当前价。" onConfirm={() => void handleFetchLatest()}>
             <Button type="primary" loading={fetching} icon={<ReloadOutlined />}>拉取最新价</Button>
           </Popconfirm>
@@ -446,7 +448,7 @@ function BarsTab() {
 }
 
 // ===== 历史数据同步 Tab =====
-function SyncTasksTab() {
+export function SyncTasksTab() {
   const [data, setData] = useState<MarketDataSyncTask[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -516,6 +518,7 @@ function SyncTasksTab() {
         <Space wrap>
           <Input allowClear placeholder="如 SH.600519 / HK.02498 / US.AAPL" style={{ width: 260 }} value={syncSymbol}
             onChange={(e) => setSyncSymbol(e.target.value)} />
+          <SecuritySelector value={syncSymbol} onChange={(symbol) => setSyncSymbol(symbol)} />
           <DatePicker placeholder="起始日期" value={syncStartDate ? dayjs(syncStartDate) : null}
             onChange={(d) => setSyncStartDate(d?.format('YYYY-MM-DD'))} />
           <DatePicker placeholder="截止日期" value={syncEndDate ? dayjs(syncEndDate) : null}

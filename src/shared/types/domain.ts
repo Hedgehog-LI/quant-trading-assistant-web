@@ -628,3 +628,60 @@ export interface MarketSectorMemberSnapshot {
   tradeStatus?: number;
   delayed: boolean;
 }
+
+// ==================== D2 证券目录（证券检索 / 标准化匹配） ====================
+
+export type SecurityMarket = 'SH' | 'SZ' | 'BJ' | 'HK' | 'US';
+export type SecurityType =
+  | 'STOCK'
+  | 'ETF'
+  | 'INDEX'
+  | 'REIT'
+  | 'FUND'
+  | 'BOND'
+  | 'WARRANT'
+  | 'OPTION'
+  | 'FUTURE'
+  | 'OTHER';
+export type ListStatus = 'LISTED' | 'DELISTED' | 'UNKNOWN';
+export type MatchedBy =
+  | 'CANONICAL_SYMBOL_EXACT'
+  | 'RAW_SYMBOL_EXACT'
+  | 'FORMAL_NAME_EXACT'
+  | 'FORMAL_NAME_PREFIX'
+  | 'ALIAS_EXACT'
+  | 'ALIAS_PREFIX'
+  | 'PINYIN_FULL_PREFIX'
+  | 'PINYIN_ABBR_PREFIX'
+  | 'NAME_CONTAINS'
+  | 'ALIAS_CONTAINS';
+
+export interface SecuritySummary {
+  canonicalSymbol: string;
+  symbol: string;
+  displayName: string;
+  name?: string | null;
+  nameCn?: string | null;
+  nameHk?: string | null;
+  nameEn?: string | null;
+  shortName?: string | null;
+  market: string;
+  exchange?: string | null;
+  currency?: string | null;
+  securityType: string;
+  listStatus: ListStatus;
+  matchedBy: MatchedBy;
+}
+
+export interface Security extends SecuritySummary {
+  pinyinFull?: string | null;
+  pinyinAbbr?: string | null;
+  listDate?: string | null;
+  delisted?: boolean;
+  dataSource?: string | null;
+  sourceUpdatedAt?: string | null;
+  sourceHash?: string | null;
+  aliases?: string[];
+}
+
+export type SecurityDetail = Security;
