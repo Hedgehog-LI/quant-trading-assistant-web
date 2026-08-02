@@ -1,0 +1,4 @@
+# Placeholder so docs/prompts/ is tracked.
+# The qta-context-bootstrap skill references this directory.
+# Historical prompts are evidence only, not current truth (AI_DEVELOPMENT_INDEX.md §6 / §4).
+# In this frontend repo, cross-repo historical prompts live in the backend control repo.

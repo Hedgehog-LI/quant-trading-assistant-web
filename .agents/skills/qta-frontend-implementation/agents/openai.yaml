@@ -1,0 +1,6 @@
+interface:
+  display_name: "QTA Frontend Implementation"
+  short_description: "Implement bounded QTA React frontend work"
+  default_prompt: "Use $qta-frontend-implementation to implement this bounded frontend task and produce self-check evidence."
+policy:
+  allow_implicit_invocation: true

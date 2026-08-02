@@ -1,0 +1,4 @@
+# Placeholder so docs/development/tasks/ is tracked.
+# The qta-task-contract skill references this directory for task contracts,
+# task-control JSON, role artifacts, and acceptance reports.
+# In this frontend repo, cross-repo task artifacts live in the backend control repo.

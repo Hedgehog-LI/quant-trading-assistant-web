@@ -1,0 +1,6 @@
+interface:
+  display_name: "QTA Backend Implementation"
+  short_description: "Implement bounded QTA Spring Boot backend work"
+  default_prompt: "Use $qta-backend-implementation to implement this bounded backend task and produce self-check evidence."
+policy:
+  allow_implicit_invocation: true

@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
       setupFiles: './src/test-setup.ts',
       css: true,
       maxWorkers: 4,
+      // The AI governance suite under scripts/tests/ uses node:test (run via
+      // scripts/run-ai-governance-gates.mjs with `node --test`), not Vitest. Exclude it
+      // from Vitest discovery so `npm run test` only runs the frontend business tests.
+      exclude: ['**/node_modules/**', '**/dist/**', 'scripts/**'],
     },
   };
 });

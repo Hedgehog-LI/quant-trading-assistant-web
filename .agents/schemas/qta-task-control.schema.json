@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qta.local/schemas/qta-task-control.schema.json",
+  "title": "QTA AI Task Control",
+  "type": "object",
+  "required": [
+    "schemaVersion", "taskId", "controlPath", "startedAt", "lane", "lifecycleState", "contract", "git",
+    "transitionHistory", "candidate", "budget", "repairHistory", "roleRuns",
+    "review", "architectureGate", "verification", "testEvidence", "finalization", "evidence"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 3},
+    "taskId": {"type": "string", "minLength": 1},
+    "controlPath": {"type": "string", "minLength": 1},
+    "startedAt": {"type": "string", "minLength": 1},
+    "lane": {"enum": ["L0", "L1", "L2", "L3"]},
+    "lifecycleState": {
+      "enum": [
+        "CONTEXT_READY", "CONTRACT_DRAFTED", "TEST_DESIGN_READY", "CONTRACT_FROZEN",
+        "IMPLEMENTING", "SELF_CHECKED", "CANDIDATE_FROZEN", "REVIEW_CLEAR", "VERIFIED",
+        "FINALIZED", "DELIVERY_READY", "CHECKPOINTED", "BLOCKED"
+      ]
+    },
+    "contract": {
+      "type": "object",
+      "required": [
+        "path", "version", "sha256", "acceptanceCriteria", "implementationSlices",
+        "testInventory", "blockingAmendments"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "minLength": 1},
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "requiredEvidence"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "requiredEvidence": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+            }
+          }
+        },
+        "implementationSlices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id", "description", "acIds", "allowedWritePaths", "maxExpectedFiles",
+              "maxProductionLineDelta"
+            ],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "description": {"type": "string", "minLength": 1},
+              "acIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+              "allowedWritePaths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+              "maxExpectedFiles": {"type": "integer", "minimum": 1, "maximum": 8},
+              "maxProductionLineDelta": {"type": "integer", "minimum": 1, "maximum": 500}
+            }
+          }
+        },
+        "testInventory": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["testId", "acIds", "kind", "required", "sourcePath", "selector"],
+            "properties": {
+              "testId": {"type": "string", "minLength": 1},
+              "acIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+              "kind": {"enum": ["STATIC", "AUTOMATION", "RUNTIME", "DEPLOYMENT"]},
+              "required": {"type": "boolean"},
+              "sourcePath": {"type": "string", "minLength": 1},
+              "selector": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "blockingAmendments": {"type": "array"}
+      }
+    },
+    "git": {
+      "type": "object",
+      "required": ["automation", "branch", "baselineCommit", "preExistingDirtyPaths"],
+      "properties": {
+        "automation": {"enum": ["NONE", "COMMIT", "COMMIT_AND_CHECKPOINT_PUSH", "DELIVERY_PUSH"]},
+        "branch": {"type": "string"},
+        "baselineCommit": {"type": "string", "minLength": 1},
+        "preExistingDirtyPaths": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "transitionHistory": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["sequence", "from", "to", "at", "actor"],
+        "properties": {
+          "sequence": {"type": "integer", "minimum": 1},
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1},
+          "at": {"type": "string", "minLength": 1},
+          "actor": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "mode", "generation", "identity", "commit", "treeHash", "patchSha256",
+        "manifestPath", "manifestSha256", "entrySetSha256", "diffArtifactPath", "diffArtifactSha256"
+      ],
+      "properties": {
+        "mode": {"enum": ["COMMIT", "SNAPSHOT"]},
+        "generation": {"type": "integer", "minimum": 1},
+        "identity": {"type": "string"},
+        "commit": {"type": "string"},
+        "treeHash": {"type": "string"},
+        "patchSha256": {"type": "string"},
+        "manifestPath": {"type": "string"},
+        "manifestSha256": {"type": "string"},
+        "entrySetSha256": {"type": "string"},
+        "diffArtifactPath": {"type": "string"},
+        "diffArtifactSha256": {"type": "string"}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "contextPercent", "compactionCount", "repairRound", "maxRepairRounds",
+        "contextMeasurement", "maxWaitCallsPerRole", "maxShellPollsPerCommand", "rawTokens",
+        "weeklyAllowancePercent"
+      ],
+      "properties": {
+        "contextPercent": {},
+        "contextMeasurement": {"enum": ["RUNTIME", "MANUAL", "UNAVAILABLE"]},
+        "compactionCount": {"type": "integer", "minimum": 0},
+        "repairRound": {"type": "integer", "minimum": 0, "maximum": 2},
+        "maxRepairRounds": {"const": 2},
+        "maxWaitCallsPerRole": {"const": 2},
+        "maxShellPollsPerCommand": {"const": 3}
+      }
+    },
+    "repairHistory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "round", "failureFingerprint", "fromGeneration", "toGeneration",
+          "findingRoleRunId", "implementerRoleRunId"
+        ],
+        "properties": {
+          "round": {"type": "integer", "minimum": 1, "maximum": 2},
+          "failureFingerprint": {"type": "string", "minLength": 1},
+          "fromGeneration": {"type": "integer", "minimum": 1},
+          "toGeneration": {"type": "integer", "minimum": 2},
+          "findingRoleRunId": {"type": "string", "minLength": 1},
+          "implementerRoleRunId": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "roleRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "roleRunId", "dispatchId", "sessionId", "role", "generation", "executorType",
+          "agentDefinition", "sliceId", "executionOutcome", "capability", "contextMode", "enforcement",
+          "waitCalls", "maxShellPollsForOneCommand", "compactionCount", "status",
+          "artifactAccepted", "artifactPath", "artifactSha256", "startedAt", "finishedAt",
+          "runtimeReceiptPath", "dispatchReceiptPath"
+        ],
+        "properties": {
+          "roleRunId": {"type": "string", "minLength": 1},
+          "dispatchId": {"type": "string", "minLength": 1},
+          "sessionId": {"type": "string", "minLength": 1},
+          "startedAt": {"type": "string", "minLength": 1},
+          "finishedAt": {"type": "string"},
+          "runtimeReceiptPath": {"type": "string"},
+          "dispatchReceiptPath": {"type": "string", "minLength": 1},
+          "role": {"enum": ["TEST_DESIGNER", "IMPLEMENTER", "CODE_REVIEWER", "FINAL_VERIFIER"]},
+          "generation": {"type": "integer", "minimum": 0},
+          "executorType": {"enum": ["SUBAGENT", "PARENT"]},
+          "agentDefinition": {"type": "string", "minLength": 1},
+          "sliceId": {"type": "string"},
+          "executionOutcome": {
+            "enum": ["COMPLETED", "TIMED_OUT", "PLAN_ONLY", "FAILED", "CANCELLED", "POLICY_VIOLATION"]
+          },
+          "capability": {"enum": ["READ_ONLY", "READ_WRITE", "VERIFY_EXECUTE"]},
+          "contextMode": {"const": "FRESH"},
+          "enforcement": {"const": "ADVISORY"},
+          "compensatingIsolation": {"type": "string"},
+          "waitCalls": {"type": "integer", "minimum": 0, "maximum": 2},
+          "maxShellPollsForOneCommand": {"type": "integer", "minimum": 0, "maximum": 3},
+          "compactionCount": {"type": "integer", "minimum": 0},
+          "status": {"enum": ["COMPLETED", "CLOSED", "POLICY_VIOLATION", "BLOCKED"]},
+          "artifactAccepted": {"type": "boolean"},
+          "artifactPath": {"type": "string"},
+          "artifactSha256": {"type": "string"}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": [
+        "omitted", "omissionReason", "generation", "candidateIdentity",
+        "functionalVerdict", "architectureVerdict", "artifactPath", "artifactSha256",
+        "architectureGateSha256", "findingIds"
+      ],
+      "properties": {
+        "omitted": {"type": "boolean"},
+        "omissionReason": {"type": "string"},
+        "generation": {"type": "integer", "minimum": 0},
+        "candidateIdentity": {"type": "string"},
+        "functionalVerdict": {"enum": ["PASS", "FAIL", "NOT_VERIFIED", "NOT_REQUIRED"]},
+        "architectureVerdict": {"enum": ["PASS", "FAIL", "NOT_VERIFIED", "NOT_REQUIRED"]},
+        "artifactPath": {"type": "string"},
+        "artifactSha256": {"type": "string"},
+        "architectureGateSha256": {"type": "string"},
+        "findingIds": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "architectureGate": {
+      "type": "object",
+      "required": [
+        "required", "candidateIdentity", "status", "exitCode", "errorCount", "warningCount",
+        "warningDispositions", "reportPath", "reportSha256", "generatedBy"
+      ],
+      "properties": {
+        "required": {"type": "boolean"},
+        "candidateIdentity": {"type": "string"},
+        "status": {"enum": ["PASS", "FAIL", "NOT_RUN", "NOT_REQUIRED"]},
+        "exitCode": {"type": "integer"},
+        "errorCount": {"type": "integer", "minimum": 0},
+        "warningCount": {"type": "integer", "minimum": 0},
+        "warningDispositions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["warningId", "rationale", "owner", "dueDate"],
+            "properties": {
+              "warningId": {"type": "string", "minLength": 1},
+              "rationale": {"type": "string", "minLength": 1},
+              "owner": {"type": "string", "minLength": 1},
+              "dueDate": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "reportPath": {"type": "string"},
+        "reportSha256": {"type": "string"},
+        "generatedBy": {"const": "scripts/check-ai-architecture.mjs"}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "candidateIdentity", "verdict", "deliveryPermitted", "functionalVerdict",
+        "architectureVerdict", "artifactPath", "artifactSha256", "architectureGateSha256", "dimensions"
+      ],
+      "properties": {
+        "candidateIdentity": {"type": "string"},
+        "verdict": {"enum": ["ACCEPTED", "CONDITIONALLY_ACCEPTED", "REJECTED", "BLOCKED", "NOT_VERIFIED"]},
+        "deliveryPermitted": {"type": "boolean"},
+        "functionalVerdict": {"enum": ["PASS", "FAIL", "NOT_VERIFIED", "NOT_REQUIRED"]},
+        "architectureVerdict": {"enum": ["PASS", "FAIL", "NOT_VERIFIED", "NOT_REQUIRED"]},
+        "artifactPath": {"type": "string"},
+        "artifactSha256": {"type": "string"},
+        "architectureGateSha256": {"type": "string"},
+        "dimensions": {
+          "type": "object",
+          "required": ["STATIC", "AUTOMATION", "RUNTIME", "DEPLOYMENT"],
+          "properties": {
+            "STATIC": {"$ref": "#/$defs/verificationDimension"},
+            "AUTOMATION": {"$ref": "#/$defs/verificationDimension"},
+            "RUNTIME": {"$ref": "#/$defs/verificationDimension"},
+            "DEPLOYMENT": {"$ref": "#/$defs/verificationDimension"}
+          }
+        }
+      }
+    },
+    "testEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "testId", "candidateIdentity", "executedByRoleRunId", "result", "exitCode",
+          "receiptPath", "receiptSha256", "observedSelectors"
+        ],
+        "properties": {
+          "testId": {"type": "string", "minLength": 1},
+          "candidateIdentity": {"type": "string", "minLength": 1},
+          "executedByRoleRunId": {"type": "string", "minLength": 1},
+          "result": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_VERIFIED"]},
+          "exitCode": {"type": "integer"},
+          "receiptPath": {"type": "string", "minLength": 1},
+          "receiptSha256": {"type": "string", "minLength": 1},
+          "observedSelectors": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+        }
+      }
+    },
+    "finalization": {
+      "type": "object",
+      "required": ["status", "candidateIdentity", "artifactPath", "artifactSha256", "completedAt", "changedPaths"],
+      "properties": {
+        "status": {"enum": ["NOT_STARTED", "COMPLETED"]},
+        "candidateIdentity": {"type": "string"},
+        "artifactPath": {"type": "string"},
+        "artifactSha256": {"type": "string"},
+        "completedAt": {"type": "string"},
+        "changedPaths": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidenceId", "acId", "kind", "candidateIdentity", "sourceType", "sourceId",
+          "artifactPath", "artifactSha256"
+        ],
+        "properties": {
+          "evidenceId": {"type": "string", "minLength": 1},
+          "acId": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["STATIC", "AUTOMATION", "RUNTIME", "DEPLOYMENT"]},
+          "candidateIdentity": {"type": "string", "minLength": 1},
+          "sourceType": {"const": "TEST_RECEIPT"},
+          "sourceId": {"type": "string", "minLength": 1},
+          "artifactPath": {"type": "string", "minLength": 1},
+          "artifactSha256": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "verificationDimension": {
+      "type": "object",
+      "required": ["required", "status"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_VERIFIED", "NOT_REQUIRED"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "QTA Product Design"
+  short_description: "Design testable QTA product behavior and scope"
+  default_prompt: "Use $qta-product-design to define the QTA workflow, boundaries, risks, and acceptance criteria."
+policy:
+  allow_implicit_invocation: true

@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+### QTA AI governance / local secrets (do not commit) ###
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
