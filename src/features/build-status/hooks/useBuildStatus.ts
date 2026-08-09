@@ -1,70 +1,78 @@
 import { useMemo, useState } from 'react';
-import { buildCapabilities, buildStatusTree, buildSummaryCards } from '../api/buildStatusData';
-import type { BuildMaturity, BuildPriority, BuildStatus, BuildStatusFilter, BuildStatusNode } from '../model/types';
-
-export function flattenBuildNodes(nodes: BuildStatusNode[]): BuildStatusNode[] {
-  return nodes.flatMap((node) => [node, ...flattenBuildNodes(node.children ?? [])]);
-}
-
-function matchesFilter(node: BuildStatusNode, filter: BuildStatusFilter): boolean {
-  const priorityMatched = !filter.priority || filter.priority === 'ALL' || node.priority === filter.priority;
-  const statusMatched = !filter.status || filter.status === 'ALL' || node.status === filter.status;
-  const maturityMatched = !filter.maturity || filter.maturity === 'ALL' || node.maturity === filter.maturity;
-  return priorityMatched && statusMatched && maturityMatched;
-}
-
-export function filterBuildTree(nodes: BuildStatusNode[], filter: BuildStatusFilter): BuildStatusNode[] {
-  return nodes
-    .map<BuildStatusNode | null>((node) => {
-      const children = filterBuildTree(node.children ?? [], filter);
-      if (matchesFilter(node, filter) || children.length > 0) {
-        const nextNode: BuildStatusNode = { ...node, children };
-        if (children.length === 0) {
-          delete nextNode.children;
-        }
-        return nextNode;
-      }
-      return null;
-    })
-    .filter((node): node is BuildStatusNode => node !== null);
-}
+import { buildStatusSnapshot } from '../data/buildStatusSnapshot';
+import type {
+  BuildPriority,
+  BuildStatusFilter,
+  BuildStatusNode,
+  DeliveryStatus,
+  ValidationStage,
+} from '../model/types';
+import {
+  collectLeaves,
+  computeOverviewStats,
+  filterBuildTree,
+  RECENT_DELIVERIES_DEFAULT,
+  RECENT_DELIVERIES_MAX,
+  sortRecentDeliveries,
+} from '../model/selectors';
 
 export interface UseBuildStatusResult {
-  summaryCards: typeof buildSummaryCards;
-  capabilities: typeof buildCapabilities;
+  snapshot: typeof buildStatusSnapshot;
+  overview: ReturnType<typeof computeOverviewStats>;
+  recentDeliveries: ReturnType<typeof sortRecentDeliveries>;
   tree: BuildStatusNode[];
-  flatNodes: BuildStatusNode[];
+  flatLeaves: BuildStatusNode[];
   selectedNode: BuildStatusNode | null;
   filter: BuildStatusFilter;
+  showAllDeliveries: boolean;
   setPriority: (priority: BuildPriority | 'ALL') => void;
-  setStatus: (status: BuildStatus | 'ALL') => void;
-  setMaturity: (maturity: BuildMaturity | 'ALL') => void;
+  setDeliveryStatus: (status: DeliveryStatus | 'ALL') => void;
+  setValidationStage: (stage: ValidationStage | 'ALL') => void;
+  setModule: (module: string | 'ALL') => void;
+  resetFilter: () => void;
   selectNode: (id: string) => void;
   clearSelection: () => void;
+  toggleShowAllDeliveries: () => void;
 }
 
 export function useBuildStatus(): UseBuildStatusResult {
-  const [filter, setFilter] = useState<BuildStatusFilter>({ priority: 'ALL', status: 'ALL', maturity: 'ALL' });
+  const [filter, setFilter] = useState<BuildStatusFilter>({
+    priority: 'ALL',
+    deliveryStatus: 'ALL',
+    validationStage: 'ALL',
+    module: 'ALL',
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showAllDeliveries, setShowAllDeliveries] = useState(false);
 
-  const tree = useMemo(() => filterBuildTree(buildStatusTree, filter), [filter]);
-  const flatNodes = useMemo(() => flattenBuildNodes(buildStatusTree), []);
+  const tree = useMemo(() => filterBuildTree(buildStatusSnapshot.capabilities, filter), [filter]);
+  const flatLeaves = useMemo(() => collectLeaves(buildStatusSnapshot.capabilities), []);
   const selectedNode = useMemo(
-    () => flatNodes.find((node) => node.id === selectedId) ?? null,
-    [flatNodes, selectedId],
+    () => flatLeaves.find((node) => node.id === selectedId) ?? null,
+    [flatLeaves, selectedId],
   );
+  const overview = useMemo(() => computeOverviewStats(buildStatusSnapshot), []);
+  const recentDeliveries = useMemo(() => sortRecentDeliveries(buildStatusSnapshot.recentDeliveries), []);
 
   return {
-    summaryCards: buildSummaryCards,
-    capabilities: buildCapabilities,
+    snapshot: buildStatusSnapshot,
+    overview,
+    recentDeliveries,
     tree,
-    flatNodes,
+    flatLeaves,
     selectedNode,
     filter,
+    showAllDeliveries,
     setPriority: (priority) => setFilter((prev) => ({ ...prev, priority })),
-    setStatus: (status) => setFilter((prev) => ({ ...prev, status })),
-    setMaturity: (maturity) => setFilter((prev) => ({ ...prev, maturity })),
+    setDeliveryStatus: (deliveryStatus) => setFilter((prev) => ({ ...prev, deliveryStatus })),
+    setValidationStage: (validationStage) => setFilter((prev) => ({ ...prev, validationStage })),
+    setModule: (module) => setFilter((prev) => ({ ...prev, module })),
+    resetFilter: () =>
+      setFilter({ priority: 'ALL', deliveryStatus: 'ALL', validationStage: 'ALL', module: 'ALL' }),
     selectNode: setSelectedId,
     clearSelection: () => setSelectedId(null),
+    toggleShowAllDeliveries: () => setShowAllDeliveries((prev) => !prev),
   };
 }
+
+export { RECENT_DELIVERIES_DEFAULT, RECENT_DELIVERIES_MAX };

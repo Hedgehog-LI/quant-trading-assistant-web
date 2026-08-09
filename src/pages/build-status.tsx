@@ -1,23 +1,29 @@
-import { Alert, Col, Row, Typography } from 'antd';
-import { BuildStatusCapabilityBars } from '../features/build-status/components/BuildStatusCapabilityBars';
-import { BuildStatusDetailDrawer } from '../features/build-status/components/BuildStatusDetailDrawer';
-import { BuildStatusLegend } from '../features/build-status/components/BuildStatusLegend';
-import { BuildStatusSummary } from '../features/build-status/components/BuildStatusSummary';
+import { Alert, Card, Typography } from 'antd';
+import { BuildStatusHeader } from '../features/build-status/components/BuildStatusHeader';
+import { BuildStatusOverview } from '../features/build-status/components/BuildStatusOverview';
+import { RecentDeliveries } from '../features/build-status/components/RecentDeliveries';
+import { CurrentActions } from '../features/build-status/components/CurrentActions';
 import { BuildStatusTree } from '../features/build-status/components/BuildStatusTree';
+import { BuildStatusDetailDrawer } from '../features/build-status/components/BuildStatusDetailDrawer';
 import { useBuildStatus } from '../features/build-status/hooks/useBuildStatus';
 
 export function BuildStatusPage() {
   const {
-    summaryCards,
-    capabilities,
+    snapshot,
+    overview,
+    recentDeliveries,
     tree,
     selectedNode,
     filter,
+    showAllDeliveries,
     setPriority,
-    setStatus,
-    setMaturity,
+    setDeliveryStatus,
+    setValidationStage,
+    setModule,
+    resetFilter,
     selectNode,
     clearSelection,
+    toggleShowAllDeliveries,
   } = useBuildStatus();
 
   return (
@@ -26,11 +32,8 @@ export function BuildStatusPage() {
         建设看板
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-        从产品经理和理财经理视角查看系统建设路线、当前成熟度、数据可信度和下一步优先事项。
+        30 秒内回答：系统建设了多少、最近交付了什么、哪些已经能在线使用、下一步做什么。
       </Typography.Paragraph>
-      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
-        状态基线 v0.1.1 · 最近同步 2026-07-06 · 数据来源：前端静态快照（与 BUILD_CHECKLIST 同步）
-      </Typography.Text>
 
       <Alert
         type="info"
@@ -39,28 +42,37 @@ export function BuildStatusPage() {
         style={{ marginBottom: 16 }}
       />
 
-      <BuildStatusSummary cards={summaryCards} />
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <BuildStatusHeader snapshot={snapshot} />
+      </Card>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={16}>
-          <BuildStatusCapabilityBars capabilities={capabilities} />
-        </Col>
-        <Col xs={24} lg={8}>
-          <BuildStatusLegend />
-        </Col>
-      </Row>
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <BuildStatusOverview stats={overview} />
+      </Card>
 
-      <div style={{ marginTop: 16 }}>
-        <BuildStatusTree
-          tree={tree}
-          selectedId={selectedNode?.id}
-          filter={filter}
-          onPriorityChange={setPriority}
-          onStatusChange={setStatus}
-          onMaturityChange={setMaturity}
-          onSelect={selectNode}
+      <Card title="最近交付时间线" size="small" style={{ marginBottom: 16 }}>
+        <RecentDeliveries
+          deliveries={recentDeliveries}
+          showAll={showAllDeliveries}
+          onToggle={toggleShowAllDeliveries}
         />
-      </div>
+      </Card>
+
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <CurrentActions readyToUse={snapshot.readyToUse} />
+      </Card>
+
+      <BuildStatusTree
+        tree={tree}
+        selectedId={selectedNode?.id}
+        filter={filter}
+        onPriorityChange={setPriority}
+        onDeliveryStatusChange={setDeliveryStatus}
+        onValidationStageChange={setValidationStage}
+        onModuleChange={setModule}
+        onReset={resetFilter}
+        onSelect={selectNode}
+      />
 
       <BuildStatusDetailDrawer node={selectedNode} onClose={clearSelection} />
     </div>

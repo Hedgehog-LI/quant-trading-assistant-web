@@ -1,14 +1,12 @@
-import { Alert, Descriptions, Drawer, Progress, Space, Tag, Typography } from 'antd';
+import { Alert, Descriptions, Drawer, Space, Tag, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import type { BuildStatusNode } from '../model/types';
 import {
-  DATA_OWNERSHIP_COLOR,
-  DATA_OWNERSHIP_LABEL,
-  MATURITY_COLOR,
-  MATURITY_LABEL,
+  DELIVERY_STATUS_COLOR,
+  DELIVERY_STATUS_LABEL,
   PRIORITY_COLOR,
-  STATUS_COLOR,
-  STATUS_LABEL,
+  VALIDATION_STAGE_COLOR,
+  VALIDATION_STAGE_LABEL,
 } from '../model/meta';
 
 interface Props {
@@ -31,6 +29,9 @@ function DetailBlock({ title, children }: DetailBlockProps) {
 }
 
 function TextListBlock({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
   return (
     <DetailBlock title={title}>
       <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -55,19 +56,14 @@ export function BuildStatusDetailDrawer({ node, onClose }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Space wrap>
             <Tag color={PRIORITY_COLOR[node.priority]}>{node.priority}</Tag>
-            <Tag color={STATUS_COLOR[node.status]}>{STATUS_LABEL[node.status]}</Tag>
-            <Tag color={MATURITY_COLOR[node.maturity]}>
-              {node.maturity} {MATURITY_LABEL[node.maturity]}
+            <Tag color={DELIVERY_STATUS_COLOR[node.deliveryStatus]}>
+              {DELIVERY_STATUS_LABEL[node.deliveryStatus]}
             </Tag>
-            <Tag color={DATA_OWNERSHIP_COLOR[node.dataOwnership]}>
-              {DATA_OWNERSHIP_LABEL[node.dataOwnership]}
+            <Tag color={VALIDATION_STAGE_COLOR[node.validationStage]}>
+              {VALIDATION_STAGE_LABEL[node.validationStage]}
             </Tag>
+            <Typography.Text type="secondary">更新于 {node.lastUpdatedAt}</Typography.Text>
           </Space>
-
-          <div>
-            <Typography.Text type="secondary">建设进度</Typography.Text>
-            <Progress percent={node.progress} />
-          </div>
 
           <Descriptions column={1} size="small" bordered>
             <Descriptions.Item label="用户价值">{node.productValue}</Descriptions.Item>
@@ -75,8 +71,36 @@ export function BuildStatusDetailDrawer({ node, onClose }: Props) {
             <Descriptions.Item label="前端状态">{node.frontendState}</Descriptions.Item>
           </Descriptions>
 
-          <TextListBlock title="当前证据" items={node.currentEvidence} />
-          <TextListBlock title="下一步动作" items={node.nextActions} />
+          <TextListBlock title="已交付内容" items={node.deliveredContent} />
+          <TextListBlock title="完成标准" items={node.completionCriteria} />
+          <TextListBlock title="剩余工作" items={node.remainingWork} />
+          <TextListBlock title="下一动作" items={node.nextActions} />
+          <TextListBlock title="当前限制 / 未验证边界" items={node.limitations} />
+
+          {(node.acceptanceRef || node.backendCommit || node.frontendCommit) && (
+            <DetailBlock title="提交与验收证据">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {node.backendCommit && (
+                  <div>
+                    <Typography.Text type="secondary">后端提交：</Typography.Text>
+                    <Typography.Text code>{node.backendCommit}</Typography.Text>
+                  </div>
+                )}
+                {node.frontendCommit && (
+                  <div>
+                    <Typography.Text type="secondary">前端提交：</Typography.Text>
+                    <Typography.Text code>{node.frontendCommit}</Typography.Text>
+                  </div>
+                )}
+                {node.acceptanceRef && (
+                  <div>
+                    <Typography.Text type="secondary">验收依据：</Typography.Text>
+                    <Typography.Text code>{node.acceptanceRef}</Typography.Text>
+                  </div>
+                )}
+              </div>
+            </DetailBlock>
+          )}
 
           {node.risks.length > 0 && (
             <Alert
@@ -93,18 +117,20 @@ export function BuildStatusDetailDrawer({ node, onClose }: Props) {
             />
           )}
 
-          <DetailBlock title="关联文档">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {node.docLinks.map((link) => (
-                <div key={link.path}>
-                  <Typography.Text strong>{link.label}</Typography.Text>
-                  <Typography.Text code copyable style={{ marginLeft: 8 }}>
-                    {link.path}
-                  </Typography.Text>
-                </div>
-              ))}
-            </div>
-          </DetailBlock>
+          {node.docLinks.length > 0 && (
+            <DetailBlock title="关联文档（仓库相对路径）">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {node.docLinks.map((link) => (
+                  <div key={link.path}>
+                    <Typography.Text strong>{link.label}</Typography.Text>
+                    <Typography.Text code copyable style={{ marginLeft: 8 }}>
+                      {link.path}
+                    </Typography.Text>
+                  </div>
+                ))}
+              </div>
+            </DetailBlock>
+          )}
         </div>
       )}
     </Drawer>
