@@ -1,0 +1,525 @@
+#!/usr/bin/env node
+
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function sanitizeSource(content) {
+  let result = "";
+  let state = "CODE";
+  let quote = "";
+  for (let index = 0; index < content.length; index += 1) {
+    const current = content[index];
+    const next = content[index + 1];
+    if (state === "LINE_COMMENT") {
+      if (current === "\n") { state = "CODE"; result += "\n"; } else result += " ";
+    } else if (state === "BLOCK_COMMENT") {
+      if (current === "*" && next === "/") { result += "  "; index += 1; state = "CODE"; }
+      else result += current === "\n" ? "\n" : " ";
+    } else if (state === "STRING") {
+      if (current === "\\") { result += "  "; index += 1; }
+      else if (current === quote) { result += " "; state = "CODE"; }
+      else result += current === "\n" ? "\n" : " ";
+    } else if (current === "/" && next === "/") {
+      result += "  "; index += 1; state = "LINE_COMMENT";
+    } else if (current === "/" && next === "*") {
+      result += "  "; index += 1; state = "BLOCK_COMMENT";
+    } else if (["\"", "'", "`"].includes(current)) {
+      quote = current; result += " "; state = "STRING";
+    } else result += current;
+  }
+  return result;
+}
+
+function significantLines(content) {
+  return sanitizeSource(content).split(/\r?\n/).filter((line) => line.trim() !== "").length;
+}
+
+function methodBraceIndexes(content) {
+  const source = sanitizeSource(content);
+  const expressions = [
+    /\bfunction\s+[A-Za-z_$][\w$]*\s*(?:<[^>{}]+>)?\s*\([^;{}]*\)\s*(?::\s*[^={]+)?\s*\{/gm,
+    /\b(?:const|let)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?\([^;{}]*\)\s*(?::\s*[^=]+)?=>\s*\{/gm,
+    /(?:^|\n)\s*(?:(?:public|private|protected|static|async|readonly|get|set)\s+)*(?!(?:if|for|while|switch|catch)\b)[A-Za-z_$][\w$]*\s*(?:<[^>{}]+>)?\s*\([^;{}]*\)\s*(?::\s*[^={]+)?\s*\{/gm
+  ];
+  const byIndex = new Map();
+  for (const expression of expressions) {
+    for (const match of source.matchAll(expression)) {
+      const braceIndex = match.index + match[0].lastIndexOf("{");
+      if (!byIndex.has(braceIndex)) byIndex.set(braceIndex, match[0]);
+    }
+  }
+  const indexes = [...byIndex.keys()].sort((left, right) => left - right);
+  return { source, indexes, matches: indexes.map((index) => byIndex.get(index)) };
+}
+
+function extractMethodName(signature) {
+  const sig = signature.replace(/\s*\{$/, "");
+  let match = sig.match(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=/);
+  if (match) return match[1];
+  match = sig.match(/\bfunction\s+([A-Za-z_$][\w$]*)/);
+  if (match) return match[1];
+  match = sig.match(/([A-Za-z_$][\w$]*)\s*(?:<[^>{}]*>)?\s*\(/);
+  if (match) return match[1];
+  return sig.replace(/\s+/g, " ").trim();
+}
+
+function methodMetrics(content) {
+  const { source, indexes, matches } = methodBraceIndexes(content);
+  let longest = 0;
+  const methods = [];
+  for (let i = 0; i < indexes.length; i += 1) {
+    const start = indexes[i];
+    let depth = 0;
+    let end = start;
+    for (; end < source.length; end += 1) {
+      if (source[end] === "{") depth += 1;
+      else if (source[end] === "}") depth -= 1;
+      if (depth === 0) break;
+    }
+    const before = source.slice(0, start).split("\n").length;
+    const after = source.slice(0, end).split("\n").length;
+    const lines = after - before + 1;
+    longest = Math.max(longest, lines);
+    methods.push({ name: extractMethodName(matches[i]), lines });
+  }
+  return { count: indexes.length, longest, methods };
+}
+
+function directDependencies(content) {
+  const source = sanitizeSource(content);
+  return new Set([...source.matchAll(/^import(?:[\s\S]*?)from\s+["']([^"']+)["'];?$/gm)]
+    .map((match) => match[1])).size;
+}
+
+function responsibilityTags(file, content) {
+  const tags = [];
+  const rules = [
+    ["http", /\b(?:axios|fetch|HttpClient)\b/],
+    ["file-protocol", /\bCSV\b|\bCsv\w*|papaparse|FileReader|Blob\b/],
+    ["conversion", /\bAdapter\b|toModel\b|fromModel\b|toDto\b/],
+    ["state", /\buseState\b|\buseReducer\b|useContext\b|zustand/],
+    ["routing", /\buseNavigate\b|\bcreateBrowserRouter\b|\bRouterProvider\b/],
+    ["search-scoring", /\bscore\b|ranking|Comparator|\.sort\s*\(/i]
+  ];
+  for (const [tag, expression] of rules) if (expression.test(content)) tags.push(tag);
+  if (file.replaceAll("\\", "/").includes("/pages/")) tags.push("page-layer");
+  if (file.replaceAll("\\", "/").includes("/hooks/")) tags.push("hook-layer");
+  return [...new Set(tags)];
+}
+
+function isProductionSource(file) {
+  const normalized = file.replaceAll("\\", "/");
+  return /\.(?:ts|tsx)$/.test(normalized)
+    && (normalized.includes("/src/") || normalized.startsWith("src/"))
+    && !/\.(?:test|spec)\.(?:ts|tsx)$/.test(normalized)
+    && !normalized.includes("/__tests__/");
+}
+
+export function analyzeSource(file, content) {
+  const lines = significantLines(content);
+  const method = methodMetrics(content);
+  const dependencies = directDependencies(content);
+  const responsibilities = responsibilityTags(file, content);
+  const warnings = [];
+  const errors = [];
+
+  if (lines > 400) warnings.push(`significant lines ${lines} > 400`);
+  if (method.count > 20) warnings.push(`methods ${method.count} > 20`);
+  if (method.longest > 60) warnings.push(`longest method ${method.longest} lines > 60`);
+  if (dependencies > 10) warnings.push(`direct dependencies ${dependencies} > 10`);
+  if (lines > 600 && (method.count > 30 || responsibilities.length > 3)) {
+    errors.push(`class/module ${lines} lines, ${method.count} methods, ${responsibilities.length} responsibilities`);
+  }
+  if (method.longest > 100) errors.push(`longest method ${method.longest} lines > 100`);
+  return {
+    file, lines, methods: method.count, longestMethod: method.longest,
+    methodLengths: method.methods,
+    dependencies, responsibilities, warnings, errors
+  };
+}
+
+function errorRuleKind(message) {
+  if (message.startsWith("longest method ")) return "longest-method";
+  if (message.startsWith("class/module ")) return "class-module";
+  return null;
+}
+
+function errorMetricForKind(message) {
+  if (message.startsWith("longest method ")) {
+    const match = message.match(/^longest method (\d+) lines/);
+    return match ? Number.parseInt(match[1], 10) : null;
+  }
+  if (message.startsWith("class/module ")) {
+    const match = message.match(/^class\/module (\d+) lines/);
+    return match ? Number.parseInt(match[1], 10) : null;
+  }
+  return null;
+}
+
+function classifyError(message, baselineReport, candidateReport, allowedWorsenDelta) {
+  const kind = errorRuleKind(message);
+  const candidateMetric = errorMetricForKind(message);
+  if (!baselineReport) {
+    return [{ classification: "introduced", candidateMetric, baselineMetric: null, delta: null }];
+  }
+  const baselineMatch = baselineReport.errors.find((entry) => errorRuleKind(entry) === kind);
+  if (!baselineMatch) {
+    return [{ classification: "introduced", candidateMetric, baselineMetric: null, delta: null }];
+  }
+  const baselineMetric = errorMetricForKind(baselineMatch);
+  if (candidateMetric !== null && baselineMetric !== null) {
+    if (kind === "longest-method" && candidateReport && baselineReport
+        && Array.isArray(candidateReport.methodLengths) && Array.isArray(baselineReport.methodLengths)) {
+      return classifyLongestMethods(candidateReport.methodLengths, baselineReport.methodLengths, allowedWorsenDelta);
+    }
+    const delta = candidateMetric - baselineMetric;
+    if (delta > allowedWorsenDelta) {
+      return [{ classification: "worsened", candidateMetric, baselineMetric, delta }];
+    }
+    return [{ classification: "pre-existing", candidateMetric, baselineMetric, delta }];
+  }
+  return [{ classification: "pre-existing", candidateMetric: null, baselineMetric: null, delta: null }];
+}
+
+function classifyLongestMethods(candidateMethods, baselineMethods, allowedWorsenDelta) {
+  const candidates = candidateMethods.filter((method) => method.lines > 100);
+  const baselines = baselineMethods.filter((method) => method.lines > 100);
+  if (candidates.length === 0) {
+    return [{ classification: "pre-existing", candidateMetric: null, baselineMetric: null, delta: null }];
+  }
+  const used = new Array(baselines.length).fill(false);
+  const classifications = [];
+  for (const candidate of candidates) {
+    let matchedBaseline = -1;
+    for (let i = 0; i < baselines.length; i += 1) {
+      if (used[i]) continue;
+      if (baselineNamesEqual(baselines[i].name, candidate.name)) {
+        matchedBaseline = i;
+        used[i] = true;
+        break;
+      }
+    }
+    if (matchedBaseline === -1) {
+      classifications.push({
+        classification: "introduced", candidateMetric: candidate.lines, baselineMetric: null, delta: null
+      });
+    } else {
+      const baseLine = baselines[matchedBaseline].lines;
+      const delta = candidate.lines - baseLine;
+      if (delta > allowedWorsenDelta) {
+        classifications.push({
+          classification: "worsened", candidateMetric: candidate.lines, baselineMetric: baseLine, delta
+        });
+      } else {
+        classifications.push({
+          classification: "pre-existing", candidateMetric: candidate.lines, baselineMetric: baseLine, delta
+        });
+      }
+    }
+  }
+  return classifications;
+}
+
+function baselineNamesEqual(left, right) {
+  if (left === right) return true;
+  if (left && right) {
+    const normalize = (value) => value.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+    if (normalize(left) === normalize(right)) return true;
+    const tail = (value) => {
+      const parts = value.split(/[.\s]/).filter(Boolean);
+      return parts[parts.length - 1];
+    };
+    if (tail(left) === tail(right)) return true;
+  }
+  return false;
+}
+
+async function baselineReportFor(file, baselineDir, candidateRoot) {
+  let relativeFile = file;
+  if (candidateRoot) {
+    const resolvedRoot = path.resolve(candidateRoot);
+    const resolvedFile = path.resolve(file);
+    const fromRoot = path.relative(resolvedRoot, resolvedFile);
+    relativeFile = fromRoot && !fromRoot.startsWith("..") && !path.isAbsolute(fromRoot) ? fromRoot : file;
+  } else if (path.isAbsolute(file)) {
+    const cwdRoot = fs.realpathSync(process.cwd());
+    const resolvedFile = fs.realpathSync(file);
+    const fromResolved = path.relative(cwdRoot, resolvedFile);
+    relativeFile = fromResolved && !fromResolved.startsWith("..") ? fromResolved : path.relative(process.cwd(), file);
+  }
+  const baselinePath = path.join(baselineDir, relativeFile);
+  try {
+    const content = await readFile(baselinePath, "utf8");
+    return { report: analyzeSource(file, content), relativeFile, content };
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function gitOutput(args, options = {}) {
+  return execFileSync("git", args, { encoding: "utf8", ...options });
+}
+
+function untrackedProductionFiles() {
+  return gitOutput(["ls-files", "--others", "--exclude-standard"])
+    .split(/\r?\n/).filter(isProductionSource);
+}
+
+function changedWorkingFiles(base) {
+  const tracked = gitOutput(["diff", "--name-only", base, "--"])
+    .split(/\r?\n/).filter(isProductionSource);
+  return [...new Set([...tracked, ...untrackedProductionFiles()])];
+}
+
+async function manifestCandidate(base, manifestPath) {
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const files = [];
+  const errors = [];
+  let additions = 0;
+  for (const entry of manifest.entries ?? []) {
+    if (entry.type !== "file" || !isProductionSource(entry.path)) continue;
+    let current;
+    try {
+      current = await readFile(entry.path);
+    } catch (error) {
+      errors.push(`manifest file unavailable: ${entry.path} (${error.code})`);
+      continue;
+    }
+    if (sha256(current) !== entry.sha256) {
+      errors.push(`manifest file hash mismatch: ${entry.path}`);
+      continue;
+    }
+    let baseline = null;
+    try {
+      baseline = execFileSync("git", ["show", `${base}:${entry.path}`]);
+    } catch {
+      // New candidate file.
+    }
+    if (baseline && sha256(baseline) === entry.sha256) continue;
+    files.push(entry.path);
+    if (!baseline) additions += significantLines(current.toString("utf8"));
+    else {
+      const numstat = gitOutput(["diff", "--numstat", base, "--", entry.path]).trim().split("\t")[0];
+      additions += Number.parseInt(numstat, 10) || 0;
+    }
+  }
+  return { files, additions, errors };
+}
+
+function workingCandidateStats(base, files) {
+  let additions = 0;
+  const numstat = gitOutput(["diff", "--numstat", base, "--"]);
+  for (const line of numstat.split(/\r?\n/)) {
+    const [added, , file] = line.split("\t");
+    if (isProductionSource(file ?? "")) additions += Number.parseInt(added, 10) || 0;
+  }
+  const tracked = new Set(gitOutput(["ls-files"]).split(/\r?\n/));
+  return { additions, tracked, files };
+}
+
+async function main() {
+  const baseIndex = process.argv.indexOf("--base");
+  const filesIndex = process.argv.indexOf("--files");
+  const manifestIndex = process.argv.indexOf("--manifest");
+  const reviewCountIndex = process.argv.indexOf("--architecture-review-count");
+  const candidateIdentityIndex = process.argv.indexOf("--candidate-identity");
+  const jsonOutputIndex = process.argv.indexOf("--json-output");
+  const baselineIndex = process.argv.indexOf("--baseline");
+  const candidateRootIndex = process.argv.indexOf("--candidate-root");
+  const baselineCommitIndex = process.argv.indexOf("--baseline-commit");
+  const allowedWorsenDeltaIndex = process.argv.indexOf("--allowed-worsen-delta");
+  const architectureReviewCount = reviewCountIndex >= 0 ? Number.parseInt(process.argv[reviewCountIndex + 1], 10) || 0 : 0;
+  const base = baseIndex >= 0 ? process.argv[baseIndex + 1] : "";
+  const candidateIdentity = candidateIdentityIndex >= 0 ? process.argv[candidateIdentityIndex + 1] : "";
+  const jsonOutput = jsonOutputIndex >= 0 ? process.argv[jsonOutputIndex + 1] : "";
+  const baselineDir = baselineIndex >= 0 ? path.resolve(process.argv[baselineIndex + 1]) : "";
+  const candidateRoot = candidateRootIndex >= 0 ? process.argv[candidateRootIndex + 1] : "";
+  const baselineCommit = baselineCommitIndex >= 0 ? process.argv[baselineCommitIndex + 1] : "";
+  let allowedWorsenDelta = 0;
+  if (allowedWorsenDeltaIndex >= 0) {
+    const rawValue = process.argv[allowedWorsenDeltaIndex + 1];
+    const parsed = Number.parseInt(rawValue, 10);
+    if (!/^\d+$/.test(rawValue ?? "") || parsed < 0 || Number.isNaN(parsed)) {
+      console.error("--allowed-worsen-delta must be a non-negative integer");
+      process.exit(2);
+    }
+    allowedWorsenDelta = parsed;
+  }
+  let files = [];
+  let additions = 0;
+  const candidateErrors = [];
+
+  if (manifestIndex >= 0) {
+    if (!base) throw new Error("--manifest requires --base");
+    const candidate = await manifestCandidate(base, process.argv[manifestIndex + 1]);
+    files = candidate.files;
+    additions = candidate.additions;
+    candidateErrors.push(...candidate.errors);
+  } else if (base) {
+    files = changedWorkingFiles(base);
+    const stats = workingCandidateStats(base, files);
+    additions = stats.additions;
+    for (const file of files) {
+      if (!stats.tracked.has(file)) additions += significantLines((await readFile(file)).toString("utf8"));
+    }
+  } else if (filesIndex >= 0) files = process.argv.slice(filesIndex + 1);
+  else {
+    console.error("Usage: node scripts/check-ai-architecture.mjs --base <git-ref> [--manifest <candidate.json>] [--architecture-review-count N] [--candidate-identity <id> --json-output <report.json>] | --files <paths...>");
+    process.exit(2);
+  }
+
+  const reports = [];
+  for (const file of files) {
+    if (!/\.(?:ts|tsx)$/.test(file)) continue;
+    try { reports.push(analyzeSource(file, await readFile(file, "utf8"))); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
+  for (const report of reports) {
+    const status = report.errors.length > 0 ? "ERROR" : report.warnings.length > 0 ? "REVIEW" : "OK";
+    console.log(`${status} ${report.file}: lines=${report.lines}, methods=${report.methods}, dependencies=${report.dependencies}, responsibilities=${report.responsibilities.join("|") || "none"}`);
+    for (const warning of report.warnings) console.log(`  WARN ${warning}`);
+    for (const error of report.errors) console.log(`  ERROR ${error}`);
+  }
+  const candidateWarnings = [];
+  if (additions > 800) {
+    const warning = `candidate adds ${additions} production lines across ${files.length} files`;
+    candidateWarnings.push(warning);
+    console.log(`CANDIDATE WARN ${warning}`);
+  }
+  if (additions > 3000 && architectureReviewCount < 2) {
+    candidateErrors.push("candidate over 3000 production lines requires two clean-context architecture reviews");
+  } else if (additions > 1500 && architectureReviewCount < 1) {
+    candidateErrors.push("candidate over 1500 production lines requires an independent architecture review");
+  }
+  for (const error of candidateErrors) console.log(`CANDIDATE ERROR ${error}`);
+
+  const warningDetails = [];
+  const introducedErrors = [];
+  const worsenedErrors = [];
+  const preExistingErrors = [];
+  let baselineFileContentsSha256 = "";
+  if (baselineDir) {
+    const baselineComparedEntries = [];
+    for (const report of reports) {
+      const baseline = await baselineReportFor(report.file, baselineDir, candidateRoot);
+      const baselineReport = baseline ? baseline.report : null;
+      if (baselineReport) {
+        baselineComparedEntries.push({
+          file: baseline.relativeFile,
+          sha256: sha256(baseline.content)
+        });
+      }
+      for (const message of report.errors) {
+        const verdicts = classifyError(message, baselineReport, report, allowedWorsenDelta);
+        for (const verdict of verdicts) {
+          const detail = {
+            file: report.file,
+            message,
+            classification: verdict.classification,
+            candidateMetric: verdict.candidateMetric,
+            baselineMetric: verdict.baselineMetric,
+            delta: verdict.delta
+          };
+          if (verdict.classification === "introduced") {
+            introducedErrors.push(detail);
+            console.log(`BASELINE-INTRODUCED ${report.file}: ${message}`);
+          } else if (verdict.classification === "worsened") {
+            worsenedErrors.push(detail);
+            console.log(`BASELINE-WORSENED ${report.file}: ${message} (candidate ${verdict.candidateMetric}, baseline ${verdict.baselineMetric}, delta ${verdict.delta})`);
+          } else {
+            preExistingErrors.push(detail);
+            console.log(`BASELINE-PRE-EXISTING ${report.file}: ${message}`);
+          }
+        }
+      }
+    }
+    baselineComparedEntries.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+    baselineFileContentsSha256 = sha256(JSON.stringify(baselineComparedEntries));
+  }
+  const errorDetails = [];
+  for (const report of reports) {
+    for (const message of report.warnings) warningDetails.push({ file: report.file, message });
+    if (!baselineDir) {
+      for (const message of report.errors) errorDetails.push({ file: report.file, message });
+    }
+  }
+  for (const message of candidateWarnings) warningDetails.push({ file: "<candidate>", message });
+  for (const message of candidateErrors) errorDetails.push({ file: "<candidate>", message });
+  const warnings = warningDetails.map((item, index) => ({ id: `ARCH-W-${String(index + 1).padStart(3, "0")}`, ...item }));
+  const warningCount = warnings.length;
+  let errors;
+  let errorCount;
+  let blockingErrorCount = null;
+  let introducedDetailed = [];
+  let worsenedDetailed = [];
+  let preExistingDetailed = [];
+  if (baselineDir) {
+    let idCounter = 0;
+    const nextId = () => `ARCH-E-${String(idCounter += 1).padStart(3, "0")}`;
+    introducedDetailed = introducedErrors.map((item) => ({ id: nextId(), ...item }));
+    worsenedDetailed = worsenedErrors.map((item) => ({ id: nextId(), ...item }));
+    const candidateErrorDetailed = candidateErrors.map((message) => ({
+      id: nextId(), file: "<candidate>", message, classification: "candidate",
+      candidateMetric: null, baselineMetric: null, delta: null
+    }));
+    preExistingDetailed = preExistingErrors.map((item) => ({ id: nextId(), ...item }));
+    errors = [...introducedDetailed, ...worsenedDetailed, ...candidateErrorDetailed];
+    blockingErrorCount = errors.length;
+    errorCount = blockingErrorCount;
+    console.log(`Architecture gate (baseline-aware): introduced=${introducedDetailed.length} worsened=${worsenedDetailed.length} pre-existing=${preExistingDetailed.length} blocking=${blockingErrorCount}`);
+  } else {
+    errors = errorDetails.map((item, index) => ({ id: `ARCH-E-${String(index + 1).padStart(3, "0")}`, ...item }));
+    errorCount = errors.length;
+  }
+  console.log(`Architecture gate: files=${reports.length}, additions=${additions}, warnings=${warningCount}, errors=${errorCount}`);
+  if (jsonOutput) {
+    if (!candidateIdentity) {
+      console.error("--json-output requires --candidate-identity so the report can bind to a frozen candidate");
+      process.exit(2);
+    }
+    const output = path.resolve(jsonOutput);
+    const temporary = `${output}.tmp-${process.pid}`;
+    const payload = {
+      schemaVersion: 1,
+      generatedBy: "scripts/check-ai-architecture.mjs",
+      generatedAt: new Date().toISOString(),
+      candidateIdentity,
+      base,
+      manifestPath: manifestIndex >= 0 ? process.argv[manifestIndex + 1] : "",
+      architectureReviewCount,
+      files: reports,
+      additions,
+      warnings,
+      errorCount,
+      errors,
+      status: errorCount === 0 ? "PASS" : "FAIL",
+      exitCode: errorCount === 0 ? 0 : 1
+    };
+    if (baselineDir) {
+      payload.baselineIdentity = process.argv[baselineIndex + 1];
+      payload.baselineCommit = baselineCommit;
+      payload.baselineFileContentsSha256 = baselineFileContentsSha256;
+      payload.allowedWorsenDelta = allowedWorsenDelta;
+      payload.blockingErrorCount = blockingErrorCount;
+      payload.introducedErrors = introducedDetailed;
+      payload.worsenedErrors = worsenedDetailed;
+      payload.preExistingErrors = preExistingDetailed;
+    }
+    await mkdir(path.dirname(output), { recursive: true });
+    await writeFile(temporary, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+    await rename(temporary, output);
+  }
+  if (errorCount > 0) process.exit(1);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

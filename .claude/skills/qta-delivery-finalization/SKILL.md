@@ -1,0 +1,92 @@
+---
+name: qta-delivery-finalization
+description: Use only after independent acceptance to synchronize verified QTA handoff, development, API, architecture, acceptance, capability, release, and deployment records. It never fixes code or upgrades unverified status.
+when_to_use: Use when an unchanged candidate has ACCEPTED or delivery-permitted CONDITIONALLY_ACCEPTED evidence. Do not use after self-check, rejection, blocking, missing evidence, or any post-verdict code change.
+---
+
+# QTA Delivery Finalization
+
+## Purpose
+
+Convert an accepted task into durable project knowledge and a deployable handoff without changing the
+verified implementation.
+
+## Trigger Conditions
+
+Invoke only when:
+
+- `$qta-independent-verification` produced `ACCEPTED`, or
+- `CONDITIONALLY_ACCEPTED` explicitly permits delivery and lists the residual risk.
+
+Do not invoke merely because implementation or self-tests finished.
+
+## Inputs
+
+- Task contract
+- Independent verification report
+- Final candidate identity:
+  - `COMMIT`: commit/tree/patch hashes, or
+  - `SNAPSHOT`: manifest and entry-set SHA-256
+- Relevant active product, API, architecture, deployment, and capability documents
+
+## Finalization Process
+
+1. Confirm the accepted candidate identity is unchanged since the verdict:
+   - `COMMIT`: contract, commit, tree, and patch hashes.
+   - `SNAPSHOT`: contract, manifest, and entry-set hashes.
+2. Confirm the machine control file passes, the verifier used a fresh role instance, and both functional and
+   architecture verdicts passed.
+3. Extract current facts; do not copy conversation history.
+4. Update only documents whose authoritative facts changed.
+5. Record acceptance evidence and residual limitations.
+6. Update capability-matrix status from evidence, not optimism.
+7. Write deployment/restart/migration steps when deployment is in scope.
+8. Refresh the frontend current-state summary in `README.md` with the smallest useful update.
+9. Run documentation and governance consistency checks.
+10. Create a finalization artifact distinct from the verification report.
+11. Ask the parent Git owner to track and commit all task contract/control/diff/role/review/verification/
+    architecture/test-receipt/finalization artifacts; this Skill does not stage unrelated files.
+12. After the parent sets `DELIVERY_READY`, require
+    `node scripts/check-ai-delivery-ready.mjs <control-file>` to exit `0`. `FINALIZED` alone is not delivery.
+
+## Document Ownership Matrix
+
+- Product behavior: relevant feature design.
+- Interface contract: API contract in the shared client.
+- Frontend module boundary: feature design and project overview in `README.md`.
+- Chronological work record: development log under `docs/development/tasks/` when maintained.
+- Verification result: acceptance log/report.
+- Current project state: `README.md`.
+- User-facing construction status: capability matrix/roadmap source.
+- AI routing: `AGENTS.md` and `CLAUDE.md`.
+
+Do not duplicate the same full narrative across every document.
+
+## Status Rules
+
+- `PLANNED`: designed, not implemented.
+- `IN_PROGRESS`: implementation started.
+- `IMPLEMENTED`: code present, not independently accepted.
+- `VERIFIED`: accepted with required evidence.
+- `DEPLOYED`: verified revision actually deployed and smoke-tested.
+- `BLOCKED`: external or internal blocker recorded.
+
+Never mark `DEPLOYED` from local tests alone.
+Never mark Goal complete from model prose, an untracked control file, or a reused verification artifact.
+
+## Required Output
+
+Report:
+
+- Accepted task/revision
+- Documents updated and why
+- Capability-matrix status changes
+- Deployment or migration steps
+- Residual risks and deferred work
+- Git paths ready for commit
+- Accepted candidate mode/identity and finalization commit proposal
+
+## No-Code Rule
+
+Do not fix implementation defects during finalization. If the verified diff changes, invalidate the verdict
+and return to implementation followed by independent verification.

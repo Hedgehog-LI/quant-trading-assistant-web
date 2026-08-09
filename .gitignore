@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+### Local AI governance runtime artifacts ###
+.qta-governance/
+candidate-*.json
+candidate-*.patch
