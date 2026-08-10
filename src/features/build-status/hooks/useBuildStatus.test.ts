@@ -27,15 +27,16 @@ describe('useBuildStatus', () => {
 
   it('筛选按优先级/研发状态/验证层级/模块生效', () => {
     const { result } = renderHook(() => useBuildStatus());
-    act(() => result.current.setDeliveryStatus('IN_PROGRESS'));
-    expect(result.current.filter.deliveryStatus).toBe('IN_PROGRESS');
-    // 全量叶节点中必须存在 IN_PROGRESS 节点
-    const ids = result.current.flatLeaves.filter((n) => n.deliveryStatus === 'IN_PROGRESS').map((n) => n.id);
+    // D2 收口后快照无 IN_PROGRESS 叶节点，用 DELIVERED 验证状态筛选
+    act(() => result.current.setDeliveryStatus('DELIVERED'));
+    expect(result.current.filter.deliveryStatus).toBe('DELIVERED');
+    // 全量叶节点中必须存在 DELIVERED 节点
+    const ids = result.current.flatLeaves.filter((n) => n.deliveryStatus === 'DELIVERED').map((n) => n.id);
     expect(ids.length).toBeGreaterThan(0);
     // 筛选后的树（collectLeaves 递归展开全部叶节点）必须全部命中该状态
     const leavesAfter = collectLeaves(result.current.tree);
     expect(leavesAfter.length).toBeGreaterThan(0);
-    expect(leavesAfter.every((n) => n.deliveryStatus === 'IN_PROGRESS')).toBe(true);
+    expect(leavesAfter.every((n) => n.deliveryStatus === 'DELIVERED')).toBe(true);
 
     act(() => result.current.resetFilter());
     expect(result.current.filter).toEqual({

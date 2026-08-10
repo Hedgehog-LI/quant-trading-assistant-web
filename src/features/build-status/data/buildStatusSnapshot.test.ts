@@ -125,4 +125,41 @@ describe('buildStatusSnapshot 数据完整性', () => {
       expect(validPaths).toContain(item.path);
     }
   });
+
+  describe('交付证据归属修正（V2 收口）', () => {
+    it('P1.7 最近交付只指向后端 3181dc0，无 frontendCommit', () => {
+      const p17 = buildStatusSnapshot.recentDeliveries.find((r) => r.title.includes('P1.7'));
+      expect(p17).toBeDefined();
+      expect(p17?.backendCommit).toBe('3181dc0');
+      expect(p17?.frontendCommit).toBeUndefined();
+    });
+
+    it('D2 最近交付只指向前端 0cf382f，无 backendCommit', () => {
+      const d2 = buildStatusSnapshot.recentDeliveries.find((r) => r.title.includes('P1.4b-D2'));
+      expect(d2).toBeDefined();
+      expect(d2?.frontendCommit).toBe('0cf382f');
+      expect(d2?.backendCommit).toBeUndefined();
+    });
+
+    it('D2 节点已收口为 DELIVERED + AUTOMATION_VERIFIED，且 D4 仍未完成', () => {
+      const nodes = allNodes(buildStatusSnapshot.capabilities);
+      const d2 = nodes.find((n) => n.id === 'security-directory-d2');
+      expect(d2).toBeDefined();
+      expect(d2?.deliveryStatus).toBe('DELIVERED');
+      expect(d2?.validationStage).toBe('AUTOMATION_VERIFIED');
+      // 真实限制保留：不得宣称 Docker/MySQL 或跨模块 D4 已验证
+      expect(d2?.limitations.join(' ')).toContain('D4');
+      expect(d2?.remainingWork.join(' ')).toContain('D4');
+      // D4 未完成：父节点仍 IN_PROGRESS 且 remainingWork 含 D4
+      const parent = nodes.find((n) => n.id === 'security-directory');
+      expect(parent).toBeDefined();
+      expect(parent?.deliveryStatus).toBe('IN_PROGRESS');
+      expect(parent?.remainingWork.join(' ')).toContain('D4');
+    });
+
+    it('修正后的证据指向新基线：P1.7 不再用 715932c', () => {
+      const p17 = buildStatusSnapshot.recentDeliveries.find((r) => r.title.includes('P1.7'));
+      expect(p17?.backendCommit).not.toBe('715932c');
+    });
+  });
 });
