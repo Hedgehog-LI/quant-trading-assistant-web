@@ -14,6 +14,7 @@ const ReviewPage = lazy(() => import('../pages/review').then((m) => ({ default: 
 const MarketDataPage = lazy(() => import('../pages/market-data').then((m) => ({ default: m.MarketDataPage })));
 const MarketWorkspacePage = lazy(() => import('../pages/market-workspace').then((m) => ({ default: m.MarketWorkspacePage })));
 const MarketSegmentsPage = lazy(() => import('../pages/market-segments').then((m) => ({ default: m.MarketSegmentsPage })));
+const MarketAssetsPage = lazy(() => import('../pages/market-assets').then((m) => ({ default: m.MarketAssetsPage })));
 const SettingsPage = lazy(() => import('../pages/settings').then((m) => ({ default: m.SettingsPage })));
 const BuildStatusPage = lazy(() => import('../pages/build-status').then((m) => ({ default: m.BuildStatusPage })));
 const NotFoundPage = lazy(() => import('../pages/not-found').then((m) => ({ default: m.NotFoundPage })));
@@ -45,6 +46,7 @@ export function AppRouter() {
           <Route path="/market-data" element={<MarketDataPage />} />
           <Route path="/market-workspace" element={<MarketWorkspacePage />} />
           <Route path="/market-segments" element={<MarketSegmentsPage />} />
+          <Route path="/market-assets" element={<MarketAssetsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/build-status" element={<BuildStatusPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

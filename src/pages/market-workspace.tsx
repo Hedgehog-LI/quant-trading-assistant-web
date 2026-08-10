@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Col, Drawer, Form, Input, message, Popconfirm, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Typography } from 'antd';
-import { EditOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, LineChartOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router';
 import { getSettings } from '../features/settings/api/settingsApi';
+import { buildAssetViewerQuery, minuteBarToAssetViewerParams, planToAssetViewerParams } from '../features/market-assets/utils/assetViewerLink';
 import {
   getWorkbenchOverview, listSyncPlans, createSyncPlan, updateSyncPlan, toggleSyncPlan, runSyncPlan,
   listTaskItems, reconcileTask, getSyncTask,
@@ -150,6 +152,7 @@ export function PlansTab() {
   const taskType = Form.useWatch('taskType', form);
   const runSeqRef = useRef(0);
   const remoteMode = getSettings().apiMode === 'remote';
+  const navigate = useNavigate();
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -270,12 +273,16 @@ export function PlansTab() {
           },
           { title: '最后运行', dataIndex: 'lastRunAt', width: 160 },
           {
-            title: '操作', width: 300,
+            title: '操作', width: 360,
             render: (_, r) => {
               const errors = fallbackConfigurationErrors(r);
               const pending = runningIds.has(String(r.id));
+              const viewerParams = planToAssetViewerParams(r);
               return (
-              <Space>
+              <Space size={4} wrap>
+                <Button size="small" type="link" icon={<LineChartOutlined />} data-testid={`plan-view-${r.id}`}
+                  disabled={viewerParams == null}
+                  onClick={() => { if (viewerParams) navigate(`/market-assets?${buildAssetViewerQuery(viewerParams)}`); }}>查看数据</Button>
                 <Button size="small" type="link" loading={pending} disabled={!remoteMode || pending || errors.length > 0 || !r.manuallyRunnable}
                   onClick={() => handleRun(r)}>立即执行</Button>
                 {r.lastTaskId != null && (
@@ -475,11 +482,12 @@ function TaskItemsDrawerContent({ plan, onClose }: { plan: MarketDataSyncPlan | 
 
 // ==================== 分钟 K Tab ====================
 
-function MinuteBarTab() {
+export function MinuteBarTab() {
   const [data, setData] = useState<PageResult<StockMinuteBar>>({ items: [], total: 0, page: 1, size: 20 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<MinuteBarFilter>({ page: 1, size: 20 });
+  const navigate = useNavigate();
 
   const load = useCallback(async (f: MinuteBarFilter) => {
     setLoading(true);
@@ -542,6 +550,16 @@ function MinuteBarTab() {
           { title: '额', dataIndex: 'amount', width: 120 },
           { title: '数据源', dataIndex: 'dataSource', width: 90 },
           { title: '质量', dataIndex: 'qualityStatus', width: 90, render: (q: string) => <Tag color={q === 'VALID' ? 'green' : q === 'SUSPECT' ? 'orange' : 'red'}>{q}</Tag> },
+          {
+            title: '操作', width: 90,
+            render: (_, r) => {
+              const p = minuteBarToAssetViewerParams(r);
+              return (
+                <Button size="small" type="link" icon={<LineChartOutlined />} data-testid={`minute-view-${r.id}`}
+                  onClick={() => navigate(`/market-assets?${buildAssetViewerQuery(p)}`)}>图表查看</Button>
+              );
+            },
+          },
         ]}
       />
     </Space>

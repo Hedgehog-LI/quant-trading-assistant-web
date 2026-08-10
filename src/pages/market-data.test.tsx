@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import type { ReactNode } from 'react';
-import { QuoteSnapshotsTab, SyncTasksTab } from './market-data';
+import { MemoryRouter, useLocation } from 'react-router';
+import { QuoteSnapshotsTab, SyncTasksTab, BarsTab } from './market-data';
 import { saveSettings } from '../features/settings/api/settingsApi';
 import { clearAll } from '../shared/api/localStorageClient';
 
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getQuoteSnapshots: vi.fn(),
   getSyncTasks: vi.fn(),
   getProviderStatus: vi.fn(),
+  getDailyBars: vi.fn(),
   searchSecurities: vi.fn(),
 }));
 
@@ -30,6 +32,7 @@ vi.mock('../features/market-data/api/marketDataApi', async () => {
     getQuoteSnapshots: mocks.getQuoteSnapshots,
     getSyncTasks: mocks.getSyncTasks,
     getProviderStatus: mocks.getProviderStatus,
+    getDailyBars: mocks.getDailyBars,
   };
 });
 
@@ -78,6 +81,24 @@ const SH603308_RESULT = {
 
 function withProvider(ui: ReactNode): ReactNode {
   return <ConfigProvider locale={zhCN}>{ui}</ConfigProvider>;
+}
+
+/** 捕获当前路由（pathname + search），用于断言「图表查看」跳转目标。 */
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
+
+/** BarsTab 使用 useNavigate，必须包在 Router 上下文内。 */
+function routerWrapper(initialEntries: string[]) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter initialEntries={initialEntries}>
+        {children}
+        <LocationProbe />
+      </MemoryRouter>
+    );
+  };
 }
 
 /**
@@ -211,5 +232,41 @@ describe('market-data SecuritySelector integration', () => {
     });
     const args = mocks.createDailyBarSync.mock.calls.at(-1) ?? [];
     expect(args[2]).toBe('SH.600519');
+  });
+});
+
+// ==================== 入口串联：日 K「图表查看」(AC-06) ====================
+
+describe('日 K「图表查看」入口（AC-06）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearAll();
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    mocks.getDailyBars.mockResolvedValue({
+      items: [{
+        id: 'b1', canonicalSymbol: 'SZ.000001', tradeDate: '2026-07-01',
+        adjustType: 'QF', dataSource: 'CSV',
+        openPrice: 10, highPrice: 10.5, lowPrice: 9.9, closePrice: 10.2, volume: 1000, amount: 10200,
+      }],
+      total: 1, page: 1, size: 20,
+    });
+  });
+
+  it('点击图表查看：跳转 /market-assets 并带入 symbol/interval=1D/source/adjust/range', async () => {
+    render(withProvider(<BarsTab />), { wrapper: routerWrapper(['/market-data']) });
+    // 日 K tab 需要先点「查询」加载数据，再出现每行「图表查看」入口。
+    fireEvent.click(screen.getByRole('button', { name: /查询/ }));
+    await waitFor(() => expect(screen.getByTestId('daily-view-b1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('daily-view-b1'));
+    await waitFor(() => {
+      const loc = screen.getByTestId('location').textContent ?? '';
+      expect(loc).toContain('/market-assets');
+      expect(loc).toContain('symbol=SZ.000001');
+      expect(loc).toContain('interval=1D');
+      expect(loc).toContain('dataSource=CSV');
+      expect(loc).toContain('adjustType=QF');
+      expect(loc).toContain('from=2026-07-01');
+      expect(loc).toContain('to=2026-07-01');
+    });
   });
 });

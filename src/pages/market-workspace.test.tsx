@@ -1,11 +1,31 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TaskItemsDrawer, PlansTab } from './market-workspace';
+import type { ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router';
+import { TaskItemsDrawer, PlansTab, MinuteBarTab } from './market-workspace';
 import { buildPlanInput } from '../features/market-data/utils/syncPlanForm';
 import { searchSecurities } from '../features/market-data/api/securityDirectoryApi';
 import { saveSettings } from '../features/settings/api/settingsApi';
 import { clearAll } from '../shared/api/localStorageClient';
 import type { MarketDataSyncPlan, MarketDataSyncTaskItem } from '../shared/types/domain';
+
+/** 捕获当前路由（pathname + search），用于断言「查看数据」跳转目标。 */
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
+
+/** PlansTab 使用 useNavigate，必须包在 Router 上下文内。 */
+function routerWrapper(initialEntries: string[]) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter initialEntries={initialEntries}>
+        {children}
+        <LocationProbe />
+      </MemoryRouter>
+    );
+  };
+}
 
 // Mock the workbench API module
 const mockApi = vi.hoisted(() => ({
@@ -14,6 +34,7 @@ const mockApi = vi.hoisted(() => ({
   createSyncPlan: vi.fn(),
   updateSyncPlan: vi.fn(),
   listSyncPlans: vi.fn(),
+  listMinuteBars: vi.fn(),
 }));
 
 vi.mock('../features/market-data/api/workbenchApi', async () => {
@@ -27,6 +48,7 @@ vi.mock('../features/market-data/api/workbenchApi', async () => {
     createSyncPlan: mockApi.createSyncPlan,
     updateSyncPlan: mockApi.updateSyncPlan,
     listSyncPlans: mockApi.listSyncPlans,
+    listMinuteBars: mockApi.listMinuteBars,
   };
 });
 
@@ -251,7 +273,7 @@ describe('采集计划 SecuritySelector 集成', () => {
 
   it('采集计划 scope：SecuritySelector 选中后 buildPlanInput 的 scopeJson 含正确 canonical symbol', async () => {
     await act(async () => {
-      render(<PlansTab />);
+      render(<PlansTab />, { wrapper: routerWrapper(['/market-workspace']) });
       // 让 useEffect(listSyncPlans) 的 microtask 在 fake timers 下落地。
       for (let i = 0; i < 10; i += 1) {
         await Promise.resolve();
@@ -302,7 +324,7 @@ describe('采集计划 SecuritySelector 集成', () => {
 
   it('采集计划/板块成员选择过程不触发 quote/K 线同步写', async () => {
     await act(async () => {
-      render(<PlansTab />);
+      render(<PlansTab />, { wrapper: routerWrapper(['/market-workspace']) });
       for (let i = 0; i < 10; i += 1) {
         await Promise.resolve();
       }
@@ -323,5 +345,104 @@ describe('采集计划 SecuritySelector 集成', () => {
     // 未提交：createSyncPlan / updateSyncPlan 都不应被调用
     expect(mockApi.createSyncPlan).not.toHaveBeenCalled();
     expect(mockApi.updateSyncPlan).not.toHaveBeenCalled();
+  });
+});
+
+// ==================== 入口串联：采集计划「查看数据」(AC-06) ====================
+
+describe('采集计划「查看数据」入口（AC-06）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearAll();
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+  });
+
+  it('日 K 计划：跳转 /market-assets 并带入 symbol/interval/source/adjust/range', async () => {
+    mockApi.listSyncPlans.mockResolvedValue({
+      items: [{
+        ...plan1,
+        scopeJson: JSON.stringify({ symbols: ['SH.600519'], startDate: '2026-01-01', endDate: '2026-06-30' }),
+      }],
+      total: 1, page: 1, size: 20,
+    });
+    render(<PlansTab />, { wrapper: routerWrapper(['/market-workspace']) });
+    await waitFor(() => expect(screen.getByTestId('plan-view-p1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('plan-view-p1'));
+    await waitFor(() => {
+      const loc = screen.getByTestId('location').textContent ?? '';
+      expect(loc).toContain('/market-assets');
+      expect(loc).toContain('symbol=SH.600519');
+      expect(loc).toContain('interval=1D');
+      expect(loc).toContain('dataSource=LONGPORT');
+      expect(loc).toContain('adjustType=NONE');
+      expect(loc).toContain('from=2026-01-01');
+      expect(loc).toContain('to=2026-06-30');
+    });
+  });
+
+  it('分钟 K 计划：interval 用 intervalType，日期转 +08:00 交易时段', async () => {
+    mockApi.listSyncPlans.mockResolvedValue({
+      items: [{
+        ...plan1,
+        taskType: 'MINUTE_BAR_BACKFILL', intervalType: '5M',
+        scopeJson: JSON.stringify({ symbols: ['SH.600519'], startDate: '2026-01-01', endDate: '2026-01-10' }),
+      }],
+      total: 1, page: 1, size: 20,
+    });
+    render(<PlansTab />, { wrapper: routerWrapper(['/market-workspace']) });
+    await waitFor(() => expect(screen.getByTestId('plan-view-p1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('plan-view-p1'));
+    await waitFor(() => {
+      const loc = screen.getByTestId('location').textContent ?? '';
+      expect(loc).toContain('interval=5M');
+      expect(loc).toContain('from=2026-01-01T09%3A30%3A00%2B08%3A00');
+      expect(loc).toContain('to=2026-01-10T15%3A00%3A00%2B08%3A00');
+    });
+  });
+
+  it('scopeJson 无标的首：查看数据按钮禁用', async () => {
+    mockApi.listSyncPlans.mockResolvedValue({
+      items: [{ ...plan1, scopeJson: JSON.stringify({ startDate: '2026-01-01' }) }],
+      total: 1, page: 1, size: 20,
+    });
+    render(<PlansTab />, { wrapper: routerWrapper(['/market-workspace']) });
+    await waitFor(() => expect(screen.getByTestId('plan-view-p1')).toBeInTheDocument());
+    expect(screen.getByTestId('plan-view-p1')).toBeDisabled();
+  });
+});
+
+// ==================== 入口串联：分钟 K「图表查看」(AC-06) ====================
+
+describe('分钟 K「图表查看」入口（AC-06）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearAll();
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    mockApi.listMinuteBars.mockResolvedValue({
+      items: [{
+        id: 'm1', canonicalSymbol: 'SH.600519', tradeDate: '2026-07-17',
+        barStartTime: '2026-07-17T09:30:00+08:00', barEndTime: '2026-07-17T09:35:00+08:00',
+        intervalType: '5M', openPrice: 100, highPrice: 101, lowPrice: 99, closePrice: 100.5,
+        volume: 1000, amount: 100000, adjustType: 'NONE', dataSource: 'LONGPORT',
+        qualityStatus: 'VALID', fetchedAt: '2026-07-17T09:35:00',
+      }],
+      total: 1, page: 1, size: 20,
+    });
+  });
+
+  it('点击图表查看：跳转 /market-assets 并带入 symbol/interval/source/adjust/当日时段 range', async () => {
+    render(<MinuteBarTab />, { wrapper: routerWrapper(['/market-workspace']) });
+    await waitFor(() => expect(screen.getByTestId('minute-view-m1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('minute-view-m1'));
+    await waitFor(() => {
+      const loc = screen.getByTestId('location').textContent ?? '';
+      expect(loc).toContain('/market-assets');
+      expect(loc).toContain('symbol=SH.600519');
+      expect(loc).toContain('interval=5M');
+      expect(loc).toContain('dataSource=LONGPORT');
+      expect(loc).toContain('adjustType=NONE');
+      expect(loc).toContain('from=2026-07-17T09%3A30%3A00%2B08%3A00');
+      expect(loc).toContain('to=2026-07-17T15%3A00%3A00%2B08%3A00');
+    });
   });
 });

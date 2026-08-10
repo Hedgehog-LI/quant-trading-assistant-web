@@ -3,13 +3,15 @@ import {
   Typography, Tabs, Table, Button, Space, Input, Select, DatePicker, Drawer, Form,
   Upload, Alert, Empty, Tag, message, Popconfirm, Spin,
 } from 'antd';
-import { PlusOutlined, UploadOutlined, ReloadOutlined, DownloadOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, UploadOutlined, ReloadOutlined, DownloadOutlined, EditOutlined, LineChartOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useNavigate } from 'react-router';
 import {
   getStocks, addStock, updateStock, deleteStock, getDailyBars, importDailyBars,
   getProviderStatus, healthCheck, getSyncTasks, getQuoteSnapshots, fetchLatestQuotes,
   getAlerts, resolveAlert, createDailyBarSync,
 } from '../features/market-data/api/marketDataApi';
+import { buildAssetViewerQuery, dailyBarToAssetViewerParams } from '../features/market-assets/utils/assetViewerLink';
 import { normalizeCanonicalSymbol, parseCanonicalSymbols } from '../features/market-data/utils/canonicalSymbol';
 import { SecuritySelector } from '../shared/components/SecuritySelector';
 import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
@@ -331,9 +333,10 @@ function StocksTab() {
 }
 
 // ===== 日 K 数据 Tab =====
-function BarsTab() {
+export function BarsTab() {
   const [data, setData] = useState<StockDailyBar[]>([]);
   const [total, setTotal] = useState(0);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -441,6 +444,16 @@ function BarsTab() {
             title: '抓取时间', dataIndex: 'fetchedAt', width: 160,
             render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—',
           }] : []),
+          {
+            title: '操作', width: 90, fixed: 'right',
+            render: (_, r) => {
+              const p = dailyBarToAssetViewerParams(r);
+              return (
+                <Button size="small" type="link" icon={<LineChartOutlined />} data-testid={`daily-view-${r.id}`}
+                  onClick={() => navigate(`/market-assets?${buildAssetViewerQuery(p)}`)}>图表查看</Button>
+              );
+            },
+          },
         ]}
       />
     </>
