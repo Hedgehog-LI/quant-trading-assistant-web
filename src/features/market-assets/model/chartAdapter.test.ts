@@ -68,6 +68,15 @@ describe('toCandles', () => {
     expect(candles).toHaveLength(0);
   });
 
+  it('平盘 candle 用中性灰（close===open），涨跌不设置 per-bar color', () => {
+    const flat = toCandles([bar({ open: '10.00', close: '10.00' })], '5M');
+    expect(flat[0].color).toBe(CANDLE_FLAT_COLOR);
+    const up = toCandles([bar({ open: '10.00', close: '10.50' })], '5M');
+    expect(up[0].color).toBeUndefined();
+    const down = toCandles([bar({ open: '10.50', close: '10.00' })], '5M');
+    expect(down[0].color).toBeUndefined();
+  });
+
   it('空数组返回空数组', () => {
     expect(toCandles([], '5M')).toHaveLength(0);
   });

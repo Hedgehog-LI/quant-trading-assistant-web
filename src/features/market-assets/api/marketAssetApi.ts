@@ -174,6 +174,7 @@ const mockApi = {
         lastBarTime: interval === '1D' ? '2026-07-31' : `2026-07-17T${interval === '60M' ? '15:00' : '15:00'}:00+08:00`,
         latestFetchedAt: null,
         watermarkTime: null,
+        freshness: 'UNKNOWN',
       })),
     };
   },
@@ -208,6 +209,8 @@ const mockApi = {
         suspectBarCount: 0,
         truncated,
         reasonCodes: truncated ? ['TRUNCATED'] : [],
+        freshness: 'UNKNOWN',
+        freshnessDetail: '演示数据未连接真实交易日历',
       },
       summary: {
         ...summary,

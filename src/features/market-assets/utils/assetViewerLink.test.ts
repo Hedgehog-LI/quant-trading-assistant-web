@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { MarketDataSyncPlan, StockDailyBar, StockMinuteBar } from '../../../shared/types/domain';
 import {
   buildAssetViewerQuery,
@@ -6,6 +6,7 @@ import {
   minuteBarToAssetViewerParams,
   planToAssetViewerParams,
 } from './assetViewerLink';
+import { openAssetViewer } from './assetViewerNavigation';
 
 function plan(overrides: Partial<MarketDataSyncPlan>): MarketDataSyncPlan {
   return {
@@ -23,6 +24,23 @@ function plan(overrides: Partial<MarketDataSyncPlan>): MarketDataSyncPlan {
     ...overrides,
   };
 }
+
+describe('openAssetViewer', () => {
+  it('用统一 helper 跳转 /market-assets 并携带参数', () => {
+    const navigate = vi.fn();
+    openAssetViewer(navigate, {
+      symbol: 'SH.600519',
+      interval: '1D',
+      dataSource: 'LONGPORT',
+      adjustType: 'NONE',
+      from: '2026-01-01',
+      to: '2026-06-30',
+    });
+    expect(navigate).toHaveBeenCalledWith(
+      '/market-assets?symbol=SH.600519&interval=1D&dataSource=LONGPORT&adjustType=NONE&from=2026-01-01&to=2026-06-30',
+    );
+  });
+});
 
 describe('buildAssetViewerQuery', () => {
   it('只编码非空参数，可安全用于 navigate', () => {

@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { MarketAssetCombination } from './types';
 import {
-  buildComboOptions,
+  buildAdjustTypeOptions,
+  buildDataSourceOptions,
   buildIntervalOptions,
   buildRangePresets,
   formatDaily,
   formatMinute,
   formatRangeParam,
+  isValidCombo,
   matchPreset,
   parseRangeParam,
   pickDefaultCombo,
+  resolveCombo,
   validateRange,
 } from './marketAssetOptions';
 
@@ -23,6 +26,7 @@ function combo(overrides: Partial<MarketAssetCombination> = {}): MarketAssetComb
     lastBarTime: overrides.lastBarTime ?? '2026-07-31',
     latestFetchedAt: overrides.latestFetchedAt ?? null,
     watermarkTime: overrides.watermarkTime ?? null,
+    freshness: overrides.freshness ?? null,
   };
 }
 
@@ -108,7 +112,7 @@ describe('默认组合与选项', () => {
     expect(pickDefaultCombo([])).toBeNull();
   });
 
-  it('interval 选项按标准顺序去重，来源/复权只列存在组合', () => {
+  it('interval 选项按标准顺序去重；来源只列存在组合', () => {
     const combos = [
       combo({ interval: '5M' }),
       combo({ interval: '1D' }),
@@ -116,14 +120,57 @@ describe('默认组合与选项', () => {
       combo({ interval: '60M' }),
     ];
     expect(buildIntervalOptions(combos).map((o) => o.value)).toEqual(['1D', '60M', '5M']);
-    const { dataSourceOptions, adjustTypeOptions } = buildComboOptions(combos, '5M');
-    expect(dataSourceOptions.map((o) => o.value)).toEqual(['LONGPORT', 'CSV']);
-    expect(adjustTypeOptions.map((o) => o.value)).toEqual(['NONE', 'QF']);
+    expect(buildDataSourceOptions(combos, '5M').map((o) => o.value)).toEqual(['LONGPORT', 'CSV']);
   });
 
   it('无组合时回退全量选项', () => {
-    const { dataSourceOptions, adjustTypeOptions } = buildComboOptions([], '5M');
-    expect(dataSourceOptions.length).toBeGreaterThan(0);
-    expect(adjustTypeOptions.length).toBeGreaterThan(0);
+    expect(buildDataSourceOptions([], '5M').length).toBeGreaterThan(0);
+    expect(buildAdjustTypeOptions([], '5M', 'LONGPORT').length).toBeGreaterThan(0);
+  });
+});
+
+describe('组合原子性', () => {
+  const combos = [
+    combo({ interval: '5M', dataSource: 'LONGPORT', adjustType: 'NONE' }),
+    combo({ interval: '5M', dataSource: 'CSV', adjustType: 'QF' }),
+    combo({ interval: '1D', dataSource: 'LONGPORT', adjustType: 'NONE' }),
+    combo({ interval: '1D', dataSource: 'LONGPORT', adjustType: 'HF' }),
+  ];
+
+  it('复权选项按 interval+source 原子过滤：只列真实存在组合', () => {
+    expect(buildAdjustTypeOptions(combos, '5M', 'LONGPORT').map((o) => o.value)).toEqual(['NONE']);
+    expect(buildAdjustTypeOptions(combos, '5M', 'CSV').map((o) => o.value)).toEqual(['QF']);
+    expect(buildAdjustTypeOptions(combos, '1D', 'LONGPORT').map((o) => o.value)).toEqual(['NONE', 'HF']);
+    // 5M 不存在 LONGPORT/QF、CSV/NONE、LONGPORT/HF 等非法交叉组合
+    expect(isValidCombo(combos, '5M', 'LONGPORT', 'QF')).toBe(false);
+    expect(isValidCombo(combos, '5M', 'CSV', 'NONE')).toBe(false);
+    expect(isValidCombo(combos, '5M', 'LONGPORT', 'HF')).toBe(false);
+  });
+
+  it('isValidCombo 只认完整 tuple；空组合一律 false', () => {
+    expect(isValidCombo(combos, '5M', 'LONGPORT', 'NONE')).toBe(true);
+    expect(isValidCombo(combos, '1D', 'LONGPORT', 'HF')).toBe(true);
+    expect(isValidCombo(combos, '1D', 'CSV', 'NONE')).toBe(false);
+    expect(isValidCombo([], '5M', 'LONGPORT', 'NONE')).toBe(false);
+  });
+
+  it('resolveCombo：合法 tuple 原样返回', () => {
+    expect(resolveCombo(combos, '5M', 'LONGPORT', 'NONE')).toEqual({ interval: '5M', dataSource: 'LONGPORT', adjustType: 'NONE' });
+  });
+
+  it('resolveCombo：同 source 自动选合法复权（不得产生 LONGPORT/QF）', () => {
+    expect(resolveCombo(combos, '5M', 'LONGPORT', 'QF')).toEqual({ interval: '5M', dataSource: 'LONGPORT', adjustType: 'NONE' });
+  });
+
+  it('resolveCombo：切换来源自动选该 interval+source 的合法组合', () => {
+    expect(resolveCombo(combos, '5M', 'CSV', 'NONE')).toEqual({ interval: '5M', dataSource: 'CSV', adjustType: 'QF' });
+  });
+
+  it('resolveCombo：同 interval 无 source 匹配时选该 interval 首个组合', () => {
+    expect(resolveCombo(combos, '5M', 'MANUAL', 'NONE')).toEqual({ interval: '5M', dataSource: 'LONGPORT', adjustType: 'NONE' });
+  });
+
+  it('resolveCombo：interval 无任何组合时回退默认组合', () => {
+    expect(resolveCombo(combos, '30M', 'LONGPORT', 'NONE')).toEqual({ interval: '1D', dataSource: 'LONGPORT', adjustType: 'NONE' });
   });
 });

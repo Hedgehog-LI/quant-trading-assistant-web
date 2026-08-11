@@ -217,17 +217,68 @@ export function buildIntervalOptions(combos: MarketAssetCombination[]): Option[]
   return options;
 }
 
-/** 指定区间可用的来源/复权选项（按标准顺序去重；无组合时回退全量）。 */
-export function buildComboOptions(
+/** 指定区间可用的来源选项（按标准顺序去重；无组合时回退全量）。 */
+export function buildDataSourceOptions(combos: MarketAssetCombination[], interval: string): Option[] {
+  const ofInterval = combos.filter((c) => c.interval === interval);
+  if (ofInterval.length === 0) return DATA_SOURCE_OPTIONS;
+  return DATA_SOURCE_OPTIONS.filter((o) => ofInterval.some((c) => c.dataSource === o.value));
+}
+
+/**
+ * 指定区间 + 来源可用的复权选项（组合原子性：只列该 interval+source 实际存在的 adjustType）。
+ * interval+source 无组合时回退到该 interval 的复权集合，避免下拉为空。
+ */
+export function buildAdjustTypeOptions(
   combos: MarketAssetCombination[],
   interval: string,
-): { dataSourceOptions: Option[]; adjustTypeOptions: Option[] } {
-  const ofInterval = combos.filter((c) => c.interval === interval);
-  if (ofInterval.length === 0) {
-    return { dataSourceOptions: DATA_SOURCE_OPTIONS, adjustTypeOptions: ADJUST_TYPE_OPTIONS };
+  dataSource: string,
+): Option[] {
+  const ofSource = combos.filter((c) => c.interval === interval && c.dataSource === dataSource);
+  if (ofSource.length > 0) {
+    return ADJUST_TYPE_OPTIONS.filter((o) => ofSource.some((c) => c.adjustType === o.value));
   }
-  return {
-    dataSourceOptions: DATA_SOURCE_OPTIONS.filter((o) => ofInterval.some((c) => c.dataSource === o.value)),
-    adjustTypeOptions: ADJUST_TYPE_OPTIONS.filter((o) => ofInterval.some((c) => c.adjustType === o.value)),
-  };
+  const ofInterval = combos.filter((c) => c.interval === interval);
+  if (ofInterval.length === 0) return ADJUST_TYPE_OPTIONS;
+  return ADJUST_TYPE_OPTIONS.filter((o) => ofInterval.some((c) => c.adjustType === o.value));
+}
+
+/**
+ * 组合原子性校验：interval/dataSource/adjustType 是否构成真实存在的完整组合。
+ * 空组合（availability 未加载或证券未采集）一律 false，series 不发起。
+ */
+export function isValidCombo(
+  combos: MarketAssetCombination[],
+  interval: string,
+  dataSource: string,
+  adjustType: string,
+): boolean {
+  return combos.some((c) => c.interval === interval && c.dataSource === dataSource && c.adjustType === adjustType);
+}
+
+/**
+ * 组合原子性选择：当前 tuple 合法则原样返回；否则自动选择合法完整组合。
+ * 优先级：同 interval+source 的首个 → 同 interval 的首个 → 默认组合。
+ */
+export function resolveCombo(
+  combos: MarketAssetCombination[],
+  interval: string,
+  dataSource: string,
+  adjustType: string,
+): { interval: string; dataSource: string; adjustType: string } {
+  if (isValidCombo(combos, interval, dataSource, adjustType)) {
+    return { interval, dataSource, adjustType };
+  }
+  const sameSource = combos.find((c) => c.interval === interval && c.dataSource === dataSource);
+  if (sameSource) {
+    return { interval: sameSource.interval, dataSource: sameSource.dataSource, adjustType: sameSource.adjustType };
+  }
+  const sameInterval = combos.find((c) => c.interval === interval);
+  if (sameInterval) {
+    return { interval: sameInterval.interval, dataSource: sameInterval.dataSource, adjustType: sameInterval.adjustType };
+  }
+  const fallback = pickDefaultCombo(combos);
+  if (fallback) {
+    return { interval: fallback.interval, dataSource: fallback.dataSource, adjustType: fallback.adjustType };
+  }
+  return { interval, dataSource, adjustType };
 }

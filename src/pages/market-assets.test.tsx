@@ -102,6 +102,8 @@ const SERIES: MarketAssetSeries = {
     suspectBarCount: 0,
     truncated: false,
     reasonCodes: [],
+    freshness: 'UNKNOWN',
+    freshnessDetail: null,
   },
   summary: {
     firstOpen: '10.00',

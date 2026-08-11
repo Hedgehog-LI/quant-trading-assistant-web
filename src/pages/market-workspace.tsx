@@ -1,26 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Col, Drawer, Form, Input, message, Popconfirm, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Typography } from 'antd';
-import { EditOutlined, LineChartOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Col, Drawer, Form, Input, message, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import { LineChartOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { getSettings } from '../features/settings/api/settingsApi';
-import { buildAssetViewerQuery, minuteBarToAssetViewerParams, planToAssetViewerParams } from '../features/market-assets/utils/assetViewerLink';
+import { minuteBarToAssetViewerParams } from '../features/market-assets/utils/assetViewerLink';
+import { openAssetViewer } from '../features/market-assets/utils/assetViewerNavigation';
 import {
-  getWorkbenchOverview, listSyncPlans, createSyncPlan, updateSyncPlan, toggleSyncPlan, runSyncPlan,
+  getWorkbenchOverview, createSyncPlan, updateSyncPlan, toggleSyncPlan,
   listTaskItems, reconcileTask, getSyncTask,
   listMinuteBars, listWatermarks, getTradingSessions,
-  type MinuteBarFilter, type WatermarkFilter,
+  type MinuteBarFilter, type WatermarkFilter, type PageResult,
 } from '../features/market-data/api/workbenchApi';
-import { buildPlanInput, fallbackConfigurationErrors, planToDraft, type SyncPlanDraft } from '../features/market-data/utils/syncPlanForm';
-import { SecurityVerificationField } from '../features/market-data/components/SecurityVerificationField';
-import { SecuritySelector } from '../shared/components/SecuritySelector';
+import { buildPlanInput, planToDraft, type SyncPlanDraft } from '../features/market-data/utils/syncPlanForm';
+import { PlanFormDrawer } from '../features/market-data/components/planFormDrawer';
+import { PlanTable } from '../features/market-data/components/planTable';
+import { usePlans } from '../features/market-data/hooks/usePlans';
 import type {
   WorkbenchOverview, MarketDataSyncPlan, MarketDataSyncTask, MarketDataSyncTaskItem,
   StockMinuteBar,
   MarketDataWatermark, MarketTradingSession, EntityId,
 } from '../shared/types/domain';
 import { formatDateTime } from '../shared/utils/date';
-
-interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
 
 const { Title, Text } = Typography;
 const DISCLAIMER = '行情数据仅用于辅助观察和复盘，不构成投资建议。';
@@ -139,50 +139,17 @@ function OverviewTab() {
 // ==================== 采集计划 Tab ====================
 
 export function PlansTab() {
-  const [data, setData] = useState<PageResult<MarketDataSyncPlan>>({ items: [], total: 0, page: 1, size: 20 });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const {
+    data, loading, error, page, setPage, runningIds,
+    itemsDrawerPlan, setItemsDrawerPlan, load, handleRun,
+  } = usePlans();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<MarketDataSyncPlan | null>(null);
   const [saving, setSaving] = useState(false);
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [itemsDrawerPlan, setItemsDrawerPlan] = useState<MarketDataSyncPlan | null>(null);
   const [form] = Form.useForm<SyncPlanDraft>();
   const taskType = Form.useWatch('taskType', form);
-  const runSeqRef = useRef(0);
   const remoteMode = getSettings().apiMode === 'remote';
   const navigate = useNavigate();
-
-  const load = useCallback(async (p: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listSyncPlans({ page: p, size: 20 });
-      setData(result);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      setLoading(true); setError(null);
-      try {
-        const result = await listSyncPlans({ page, size: 20 });
-        if (!cancelled) setData(result);
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void run();
-    return () => { cancelled = true; };
-  }, [page]);
 
   const openCreate = () => {
     setEditingPlan(null);
@@ -220,26 +187,7 @@ export function PlansTab() {
   const handleToggle = async (id: EntityId, enabled: boolean) => {
     await toggleSyncPlan(id, enabled);
     message.success(enabled ? '已启用' : '已停用');
-    load(page);
-  };
-
-  const handleRun = async (plan: MarketDataSyncPlan) => {
-    const key = String(plan.id);
-    if (runningIds.has(key)) return;
-    const seq = ++runSeqRef.current;
-    setRunningIds(previous => new Set(previous).add(key));
-    message.loading({ content: '执行中...', key: `run-${key}`, duration: 0 });
-    try {
-      const result = await runSyncPlan(plan.id);
-      if (seq !== runSeqRef.current) return;
-      message.success({ content: `任务 ${result.lastTaskId ?? '-'} 已进入终态`, key: `run-${key}` });
-      setItemsDrawerPlan(result);
-      await load(page);
-    } catch (e) {
-      if (seq === runSeqRef.current) message.error({ content: `执行失败: ${(e as Error).message}`, key: `run-${key}` });
-    } finally {
-      setRunningIds(previous => { const next = new Set(previous); next.delete(key); return next; });
-    }
+    void load(page);
   };
 
   if (error) {
@@ -250,105 +198,31 @@ export function PlansTab() {
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
       {!remoteMode && <Alert type="info" title="Mock 模式只保存演示配置，不会伪造 provider 执行成功；切换后端模式才能立即执行。" />}
       <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建采集计划</Button>
-      <Table<MarketDataSyncPlan>
-        size="small" rowKey="id" loading={loading}
-        dataSource={data.items}
-        pagination={{ current: data.page, pageSize: data.size, total: data.total, onChange: setPage }}
-        columns={[
-          { title: '名称', dataIndex: 'planName', width: 160 },
-          { title: '任务类型', dataIndex: 'taskType', width: 160 },
-          { title: 'Provider', dataIndex: 'provider', width: 100 },
-          { title: '粒度', dataIndex: 'intervalType', width: 80 },
-          { title: '触发', dataIndex: 'triggerType', width: 100 },
-          { title: '复权', dataIndex: 'adjustType', width: 80 },
-          {
-            title: '配置 / 启用', width: 150,
-            render: (_, r) => {
-              const errors = fallbackConfigurationErrors(r);
-              return <Space size={4} wrap>
-                <Tag color={errors.length ? 'red' : 'green'} title={errors.join('；')}>{errors.length ? '需要修正' : '配置完整'}</Tag>
-                <Tag color={r.enabled ? 'blue' : 'default'}>{r.enabled ? '已启用' : '已停用'}</Tag>
-              </Space>;
-            },
-          },
-          { title: '最后运行', dataIndex: 'lastRunAt', width: 160 },
-          {
-            title: '操作', width: 360,
-            render: (_, r) => {
-              const errors = fallbackConfigurationErrors(r);
-              const pending = runningIds.has(String(r.id));
-              const viewerParams = planToAssetViewerParams(r);
-              return (
-              <Space size={4} wrap>
-                <Button size="small" type="link" icon={<LineChartOutlined />} data-testid={`plan-view-${r.id}`}
-                  disabled={viewerParams == null}
-                  onClick={() => { if (viewerParams) navigate(`/market-assets?${buildAssetViewerQuery(viewerParams)}`); }}>查看数据</Button>
-                <Button size="small" type="link" loading={pending} disabled={!remoteMode || pending || errors.length > 0 || !r.manuallyRunnable}
-                  onClick={() => handleRun(r)}>立即执行</Button>
-                {r.lastTaskId != null && (
-                  <Button size="small" type="link" onClick={() => setItemsDrawerPlan(r)}>任务明细</Button>
-                )}
-                <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEdit(r)}>修正</Button>
-                <Popconfirm title={r.enabled ? '确定停用？' : '确定启用？'} onConfirm={() => handleToggle(r.id, !r.enabled)}>
-                  <Button size="small" type="link" disabled={!r.enabled && errors.length > 0}>{r.enabled ? '停用' : '启用'}</Button>
-                </Popconfirm>
-              </Space>
-              );
-            },
-          },
-        ]}
+      <PlanTable
+        data={data.items}
+        page={data.page}
+        pageSize={data.size}
+        total={data.total}
+        loading={loading}
+        remoteMode={remoteMode}
+        runningIds={runningIds}
+        onPageChange={setPage}
+        onRun={handleRun}
+        onEdit={openEdit}
+        onToggle={handleToggle}
+        onShowItems={setItemsDrawerPlan}
+        onView={(viewerParams) => openAssetViewer(navigate, viewerParams)}
       />
-      <Drawer title={editingPlan ? '修正采集计划' : '新建采集计划'} open={drawerOpen} onClose={() => setDrawerOpen(false)} size="large"
-        extra={<Space><Button onClick={() => setDrawerOpen(false)}>取消</Button><Button type="primary" loading={saving} onClick={handleSave}>{editingPlan ? '保存修正' : '创建'}</Button></Space>}>
-        <Form form={form} layout="vertical">
-          <Form.Item name="planName" label="计划名称" rules={[{ required: true }]}><Input placeholder="茅台30M补档" /></Form.Item>
-          <Form.Item name="taskType" label="任务类型" rules={[{ required: true }]}>
-            <Select options={[
-              { value: 'MINUTE_BAR_BACKFILL', label: '历史分钟K补档' },
-              { value: 'DAILY_BAR_BACKFILL', label: '历史日K补档' },
-              { value: 'INTRADAY_MINUTE_REFRESH', label: '盘中分钟线刷新' },
-            ]} />
-          </Form.Item>
-          <Form.Item name="provider" label="Provider" rules={[{ required: true }]}><Select options={[{ value: 'LONGPORT', label: 'LongPort（只读行情）' }]} /></Form.Item>
-          <Form.Item label="从目录选择标的">
-            <SecuritySelector
-              onChange={(symbol) => {
-                if (!symbol) return;
-                const current = (form.getFieldValue('symbols') ?? '').trim();
-                const existing = current.split(/[\s,，;；]+/).filter(Boolean);
-                if (existing.includes(symbol)) return;
-                form.setFieldValue('symbols', current ? `${current}, ${symbol}` : symbol);
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="symbols" label="标的" rules={[{ required: true, message: '至少验证并加入一个标的' }]}>
-            <SecurityVerificationField remoteMode={remoteMode} taskType={taskType} />
-          </Form.Item>
-          {taskType !== 'INTRADAY_MINUTE_REFRESH' && <Row gutter={16}>
-            <Col span={12}><Form.Item name="startDate" label="开始日期" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="endDate" label="结束日期" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-          </Row>}
-          {taskType !== 'DAILY_BAR_BACKFILL' && <Form.Item name="intervalType" label="K线粒度" rules={[{ required: true }]}>
-            <Select allowClear options={[
-              { value: '1M', label: '1分钟' }, { value: '5M', label: '5分钟' },
-              { value: '15M', label: '15分钟' }, { value: '30M', label: '30分钟' }, { value: '60M', label: '60分钟' },
-            ]} />
-          </Form.Item>}
-          <Form.Item name="adjustType" label="复权类型">
-            <Select options={[{ value: 'NONE', label: '不复权' }, { value: 'QF', label: '前复权' }, { value: 'HF', label: '后复权（SDK 不支持）', disabled: true }]} />
-          </Form.Item>
-          <Alert type="info" title={taskType === 'INTRADAY_MINUTE_REFRESH'
-            ? '触发方式固定为 INTRADAY；仅 A 股交易日和允许时段运行，同一计划不重叠。'
-            : '历史补档触发方式固定为 MANUAL；点击“立即执行”才会创建任务并拉取数据。'} style={{ marginBottom: 16 }} />
-          {taskType === 'INTRADAY_MINUTE_REFRESH' && <>
-            <Form.Item name="collectFrequency" label="采集频率" rules={[{ required: true }]}>
-              <Select options={[{ value: '30S', label: '每 30 秒' }, { value: '60S', label: '每 60 秒' }, { value: '5M', label: '每 5 分钟' }]} />
-            </Form.Item>
-            <Form.Item name="includeAuction" label="包含 09:15-09:25 集合竞价" valuePropName="checked"><Switch /></Form.Item>
-          </>}
-          <Form.Item name="description" label="描述"><Input.TextArea rows={2} /></Form.Item>
-        </Form>
-      </Drawer>
+      <PlanFormDrawer
+        open={drawerOpen}
+        editingPlan={editingPlan}
+        saving={saving}
+        form={form}
+        taskType={taskType}
+        remoteMode={remoteMode}
+        onClose={() => setDrawerOpen(false)}
+        onSave={() => void handleSave()}
+      />
       <TaskItemsDrawer plan={itemsDrawerPlan} onClose={() => setItemsDrawerPlan(null)} />
     </Space>
   );
@@ -556,7 +430,7 @@ export function MinuteBarTab() {
               const p = minuteBarToAssetViewerParams(r);
               return (
                 <Button size="small" type="link" icon={<LineChartOutlined />} data-testid={`minute-view-${r.id}`}
-                  onClick={() => navigate(`/market-assets?${buildAssetViewerQuery(p)}`)}>图表查看</Button>
+                  onClick={() => openAssetViewer(navigate, p)}>图表查看</Button>
               );
             },
           },

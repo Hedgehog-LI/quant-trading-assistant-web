@@ -55,7 +55,7 @@ export function toChartTime(time: string, interval: string): Time | null {
   return parseUtcSeconds(time);
 }
 
-/** K 线数组：日 K 与分钟 K 口径分离，不做拼接。 */
+/** K 线数组：日 K 与分钟 K 口径分离，不做拼接。平盘（close===open）candle 用中性灰。 */
 export function toCandles(bars: MarketAssetBar[], interval: string): CandlestickData[] {
   const candles: CandlestickData[] = [];
   for (const bar of bars) {
@@ -66,7 +66,10 @@ export function toCandles(bars: MarketAssetBar[], interval: string): Candlestick
     const low = toNumber(bar.low);
     const close = toNumber(bar.close);
     if (open == null || high == null || low == null || close == null) continue;
-    candles.push({ time, open, high, low, close });
+    const flat = close === open;
+    candles.push(flat
+      ? { time, open, high, low, close, color: CANDLE_FLAT_COLOR }
+      : { time, open, high, low, close });
   }
   return candles;
 }

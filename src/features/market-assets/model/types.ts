@@ -24,6 +24,8 @@ export interface MarketAssetCombination {
   lastBarTime: string | null;
   latestFetchedAt: string | null;
   watermarkTime: string | null;
+  /** FRESH / STALE / UNKNOWN：无权威日历或无法判断时为 UNKNOWN。 */
+  freshness: string | null;
 }
 
 export interface MarketAssetAvailability {
@@ -56,6 +58,10 @@ export interface MarketAssetSeriesQuality {
   suspectBarCount: number;
   truncated: boolean;
   reasonCodes: string[];
+  /** FRESH / STALE / UNKNOWN：无权威日历或无法判断时为 UNKNOWN。 */
+  freshness: string | null;
+  /** 无法判定新鲜度时的原因；判定成功时为 null。 */
+  freshnessDetail: string | null;
 }
 
 export interface MarketAssetSeriesSummary {

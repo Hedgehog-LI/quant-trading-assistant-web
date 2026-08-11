@@ -64,7 +64,7 @@ export function MarketAssetSummary({ summary, loading }: Props) {
         </Col>
         {stat('最高', formatPrice(Number(summary.highestHigh ?? 0)))}
         {stat('最低', formatPrice(Number(summary.lowestLow ?? 0)))}
-        {stat('成交量', `${formatMoney(summary.totalVolume)} 手`)}
+        {stat('成交量', formatMoney(summary.totalVolume))}
         {stat('成交额', formatMoney(Number(summary.totalAmount ?? 0)))}
         {stat('K 线条数', summary.actualBarCount)}
       </Row>

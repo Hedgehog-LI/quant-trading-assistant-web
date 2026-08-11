@@ -3,7 +3,7 @@ import {
   Typography, Tabs, Table, Button, Space, Input, Select, DatePicker, Drawer, Form,
   Upload, Alert, Empty, Tag, message, Popconfirm, Spin,
 } from 'antd';
-import { PlusOutlined, UploadOutlined, ReloadOutlined, DownloadOutlined, EditOutlined, LineChartOutlined } from '@ant-design/icons';
+import { PlusOutlined, UploadOutlined, ReloadOutlined, DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router';
 import {
@@ -11,7 +11,9 @@ import {
   getProviderStatus, healthCheck, getSyncTasks, getQuoteSnapshots, fetchLatestQuotes,
   getAlerts, resolveAlert, createDailyBarSync,
 } from '../features/market-data/api/marketDataApi';
-import { buildAssetViewerQuery, dailyBarToAssetViewerParams } from '../features/market-assets/utils/assetViewerLink';
+import {
+  dailyBarColumns, quoteSnapshotColumns, stockColumns, syncTaskColumns,
+} from '../features/market-data/components/marketDataTableColumns';
 import { normalizeCanonicalSymbol, parseCanonicalSymbols } from '../features/market-data/utils/canonicalSymbol';
 import { SecuritySelector } from '../shared/components/SecuritySelector';
 import type { StockBasic, StockDailyBar, DailyBarImportResult, EntityId,
@@ -154,18 +156,7 @@ export function QuoteSnapshotsTab() {
         pagination={{ current: page, pageSize: 20, total, onChange: (p) => { setPage(p); void load(p, filter); } }}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: <Empty description="暂无外部最新价快照" /> }}
-        columns={[
-          { title: '代码', dataIndex: 'canonicalSymbol', width: 140 },
-          { title: '行情时间', dataIndex: 'quoteTime', width: 160, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
-          { title: '最新价', dataIndex: 'currentPrice', width: 100, render: (v: number) => v?.toFixed(2) },
-          { title: '开', dataIndex: 'openPrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
-          { title: '高', dataIndex: 'highPrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
-          { title: '低', dataIndex: 'lowPrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
-          { title: '昨收', dataIndex: 'preClosePrice', width: 80, render: (v?: number) => v?.toFixed(2) ?? '—' },
-          { title: '成交量', dataIndex: 'volume', width: 100 },
-          { title: '来源', dataIndex: 'dataSource', width: 100, render: (v) => <Tag color="blue">{v}</Tag> },
-          { title: '抓取时间', dataIndex: 'fetchedAt', width: 160, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
-        ]}
+        columns={quoteSnapshotColumns()}
       />
     </>
   );
@@ -298,21 +289,7 @@ function StocksTab() {
           onChange: (p, ps) => { setPage(p); setPageSize(ps); void load(p, ps, filter); } }}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: <Empty description="暂无证券主数据" /> }}
-        columns={[
-          { title: '代码', dataIndex: 'canonicalSymbol', width: 140 },
-          { title: '名称', dataIndex: 'name', width: 120 },
-          { title: '市场', dataIndex: 'market', width: 80, render: (v) => <Tag>{v}</Tag> },
-          { title: '上市日期', dataIndex: 'listDate', width: 120 },
-          { title: '退市', dataIndex: 'delisted', width: 80, render: (v) => (v ? <Tag color="red">退市</Tag> : '—') },
-          { title: '操作', key: 'action', width: 140, render: (_, r) => (
-            <Space size="small">
-              <Button size="small" icon={<EditOutlined />} onClick={() => setEditing(r)}>编辑</Button>
-              <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(r.canonicalSymbol)}>
-                <Button size="small" danger>删除</Button>
-              </Popconfirm>
-            </Space>
-          ) },
-        ]}
+        columns={stockColumns({ onDelete: (c) => void handleDelete(c), onEdit: (s) => setEditing(s) })}
       />
       <StockFormDrawer open={createOpen} onClose={() => setCreateOpen(false)}
         onSubmit={async (v) => {
@@ -413,48 +390,14 @@ export function BarsTab() {
           a.click();
         }}>下载模板</Button>
       </Space>
-      {importResult && (
-        <Alert
-          type={importResult.failed > 0 ? 'warning' : 'success'}
-          showIcon
-          style={{ marginBottom: 16 }}
-          title={`新增 ${importResult.inserted} / 更新 ${importResult.updated} / 跳过 ${importResult.skipped} / 失败 ${importResult.failed}`}
-          description={importResult.errors.length > 0
-            ? importResult.errors.slice(0, 5).map((e) => `第 ${e.row} 行: ${e.message}`).join('；')
-            : '导入成功'}
-        />
-      )}
+      {importResult && <DailyBarImportResultAlert result={importResult} />}
       <Table<StockDailyBar> size="small" rowKey="id" loading={loading}
         dataSource={data}
         pagination={{ current: page, pageSize, total, showSizeChanger: true, showTotal: (t) => `共 ${t} 条`,
           onChange: (p, ps) => { setPage(p); setPageSize(ps); void load(p, ps, filter); } }}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: <Empty description="暂无日 K 数据，请导入 CSV 或查询" /> }}
-        columns={[
-          { title: '代码', dataIndex: 'canonicalSymbol', width: 140 },
-          { title: '日期', dataIndex: 'tradeDate', width: 120 },
-          { title: '开盘', dataIndex: 'openPrice', width: 100, render: (v: number) => v?.toFixed(2) },
-          { title: '最高', dataIndex: 'highPrice', width: 100, render: (v: number) => v?.toFixed(2) },
-          { title: '最低', dataIndex: 'lowPrice', width: 100, render: (v: number) => v?.toFixed(2) },
-          { title: '收盘', dataIndex: 'closePrice', width: 100, render: (v: number) => v?.toFixed(2) },
-          { title: '成交量', dataIndex: 'volume', width: 100 },
-          { title: '复权', dataIndex: 'adjustType', width: 80, render: (v) => <Tag>{v}</Tag> },
-          { title: '来源', dataIndex: 'dataSource', width: 80, render: (v) => <Tag color="blue">{v}</Tag> },
-          ...(data.some((d) => d.fetchedAt) ? [{
-            title: '抓取时间', dataIndex: 'fetchedAt', width: 160,
-            render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—',
-          }] : []),
-          {
-            title: '操作', width: 90, fixed: 'right',
-            render: (_, r) => {
-              const p = dailyBarToAssetViewerParams(r);
-              return (
-                <Button size="small" type="link" icon={<LineChartOutlined />} data-testid={`daily-view-${r.id}`}
-                  onClick={() => navigate(`/market-assets?${buildAssetViewerQuery(p)}`)}>图表查看</Button>
-              );
-            },
-          },
-        ]}
+        columns={dailyBarColumns({ data, navigate })}
       />
     </>
   );
@@ -524,7 +467,6 @@ export function SyncTasksTab() {
 
   if (error) return <Alert type="error" showIcon title="加载失败" description={error} action={<Button size="small" onClick={() => void load(page)}>重试</Button>} />;
 
-  const statusColor: Record<string, string> = { SUCCEEDED: 'green', FAILED: 'red', PARTIAL_FAILED: 'orange', RUNNING: 'blue', PENDING: 'default' };
   return (
     <>
       <Space style={{ marginBottom: 16, width: '100%' }} wrap direction="vertical">
@@ -547,18 +489,7 @@ export function SyncTasksTab() {
         pagination={{ current: page, pageSize: 20, total, onChange: (p) => { setPage(p); void load(p); } }}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: <Empty description="暂无同步任务" /> }}
-        columns={[
-          { title: 'ID', dataIndex: 'id', width: 60 },
-          { title: '类型', dataIndex: 'taskType', width: 140 },
-          { title: 'Provider', dataIndex: 'provider', width: 100 },
-          { title: '状态', dataIndex: 'status', width: 120, render: (v) => <Tag color={statusColor[v] ?? 'default'}>{v}</Tag> },
-          { title: '新增', dataIndex: 'insertedCount', width: 60 },
-          { title: '更新', dataIndex: 'updatedCount', width: 60 },
-          { title: '跳过', dataIndex: 'skippedCount', width: 60 },
-          { title: '失败', dataIndex: 'failCount', width: 60 },
-          { title: '开始', dataIndex: 'startedAt', width: 160, render: (v?: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
-          { title: '完成', dataIndex: 'finishedAt', width: 160, render: (v?: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
-        ]}
+        columns={syncTaskColumns()}
       />
     </>
   );
@@ -683,5 +614,20 @@ function StockEditDrawer({ stock, onClose, onSubmit }: {
         <Button type="primary" htmlType="submit">保存</Button>
       </Form>
     </Drawer>
+  );
+}
+
+// ===== 日 K 导入结果提示 =====
+function DailyBarImportResultAlert({ result }: { result: DailyBarImportResult }) {
+  return (
+    <Alert
+      type={result.failed > 0 ? 'warning' : 'success'}
+      showIcon
+      style={{ marginBottom: 16 }}
+      title={`新增 ${result.inserted} / 更新 ${result.updated} / 跳过 ${result.skipped} / 失败 ${result.failed}`}
+      description={result.errors.length > 0
+        ? result.errors.slice(0, 5).map((e) => `第 ${e.row} 行: ${e.message}`).join('；')
+        : '导入成功'}
+    />
   );
 }

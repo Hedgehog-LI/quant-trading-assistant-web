@@ -54,7 +54,7 @@ describe('useMarketAssetSeries', () => {
       security: { canonicalSymbol: 'SH.600519', displayName: '贵州茅台', market: 'SH', currency: 'CNY', timeZone: 'Asia/Shanghai' },
       query: SERIES_PARAMS,
       availability: { firstBarTime: '2026-07-01', lastBarTime: '2026-07-31', latestFetchedAt: null, watermarkTime: null },
-      quality: { coverageStatus: 'UNKNOWN', actualBarCount: 0, expectedBarCount: null, missingBarCount: null, suspectBarCount: 0, truncated: false, reasonCodes: [] },
+      quality: { coverageStatus: 'UNKNOWN', actualBarCount: 0, expectedBarCount: null, missingBarCount: null, suspectBarCount: 0, truncated: false, reasonCodes: [], freshness: 'UNKNOWN', freshnessDetail: null },
       summary: { firstOpen: null, lastClose: null, absoluteChange: null, changeRate: null, highestHigh: null, lowestLow: null, totalVolume: 0, totalAmount: null, actualBarCount: 0 },
       bars: [],
     };

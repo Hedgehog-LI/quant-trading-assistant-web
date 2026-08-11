@@ -17,10 +17,41 @@ const COVERAGE_TEXT: Record<string, string> = {
   UNKNOWN: '覆盖率未知',
 };
 
+const FRESHNESS_TEXT: Record<string, string> = {
+  FRESH: '数据较新',
+  STALE: '数据陈旧',
+  UNKNOWN: '新鲜度未知',
+};
+
 function coverageColor(status: string | null): string {
   if (status === 'VERIFIED') return 'green';
   if (status === 'PARTIAL') return 'orange';
   return 'default';
+}
+
+function freshnessColor(status: string | null): string {
+  if (status === 'FRESH') return 'green';
+  if (status === 'STALE') return 'orange';
+  return 'default';
+}
+
+/** 新鲜度无法判定或数据陈旧时给出明确文案。 */
+function freshnessAlert(quality: MarketAssetSeriesQuality) {
+  const freshness = quality.freshness ?? 'UNKNOWN';
+  if (freshness === 'FRESH') return null;
+  const message = freshness === 'STALE' ? '数据陈旧' : '新鲜度未知';
+  const description = freshness === 'STALE'
+    ? '最新行情落后于最近已完成交易时段，请检查采集链路。'
+    : (quality.freshnessDetail ?? '缺少权威日历或最新数据，无法判定新鲜度。');
+  return (
+    <Alert
+      type={freshness === 'STALE' ? 'warning' : 'info'}
+      showIcon
+      message={message}
+      description={description}
+      data-testid={`freshness-alert-${freshness.toLowerCase()}`}
+    />
+  );
 }
 
 export function MarketAssetHealth({ availability, quality, loading }: Props) {
@@ -61,6 +92,11 @@ export function MarketAssetHealth({ availability, quality, loading }: Props) {
         <Descriptions.Item label="数据范围">
           {availability?.firstBarTime ?? '--'} ～ {availability?.lastBarTime ?? '--'}
         </Descriptions.Item>
+        <Descriptions.Item label="新鲜度">
+          <Tag color={freshnessColor(quality.freshness)} data-testid="asset-freshness">
+            {FRESHNESS_TEXT[quality.freshness ?? 'UNKNOWN'] ?? quality.freshness}
+          </Tag>
+        </Descriptions.Item>
         <Descriptions.Item label="水位">
           {availability?.watermarkTime ?? '无水位（分钟链路外）'}
         </Descriptions.Item>
@@ -69,6 +105,7 @@ export function MarketAssetHealth({ availability, quality, loading }: Props) {
         </Descriptions.Item>
       </Descriptions>
 
+      {freshnessAlert(quality)}
       {quality.truncated && (
         <Alert
           type="warning"

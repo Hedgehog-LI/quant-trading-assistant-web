@@ -13,7 +13,7 @@ import { MarketAssetTable } from '../features/market-assets/components/MarketAss
 import { MarketAssetToolbar } from '../features/market-assets/components/MarketAssetToolbar';
 import { MarketCandlestickChart } from '../features/market-assets/components/MarketCandlestickChart';
 import { RelatedCollectionRuns } from '../features/market-assets/components/RelatedCollectionRuns';
-import { useMarketAssetView } from '../features/market-assets/hooks/useMarketAssetView';
+import { useMarketAssetView, type UseMarketAssetViewResult } from '../features/market-assets/hooks/useMarketAssetView';
 
 const { Title, Text } = Typography;
 
@@ -45,31 +45,26 @@ function NoSymbolView({ onSelect }: { onSelect: (symbol: string) => void }) {
   );
 }
 
-export function MarketAssetsPage() {
-  const view = useMarketAssetView();
+/** 已选证券的内容编排：工具栏 + availability/系列/健康/原始数据 + 相关采集记录。 */
+function AssetViewerContent({ view }: { view: UseMarketAssetViewResult }) {
   const {
     symbol,
-    setSymbol,
     interval,
-    availabilityQuery,
-    seriesQuery,
-    relatedQuery,
-    apiMode,
     rangeError,
     hasCombinations,
     availabilityLoading,
+    availabilityQuery,
+    seriesQuery,
+    relatedQuery,
   } = view;
-
-  if (!symbol) {
-    return <NoSymbolView onSelect={setSymbol} />;
-  }
+  const series = seriesQuery.data;
 
   return (
     <div>
       <Title level={4}>行情资产</Title>
       <Space style={{ marginBottom: 12 }} wrap>
         <Text type="secondary">已选证券：{symbol}</Text>
-        {apiMode === 'mock' && (
+        {view.apiMode === 'mock' && (
           <Tag color="gold" data-testid="local-demo-tag">
             LOCAL_DEMO 演示数据
           </Tag>
@@ -78,7 +73,7 @@ export function MarketAssetsPage() {
 
       <MarketAssetToolbar
         symbol={symbol}
-        onSymbolChange={setSymbol}
+        onSymbolChange={view.setSymbol}
         availabilityLoading={availabilityLoading}
         intervalOptions={view.intervalOptions}
         interval={view.interval}
@@ -153,24 +148,24 @@ export function MarketAssetsPage() {
           {rangeError == null && !seriesQuery.isError && (
             <>
               <div style={{ marginTop: 16 }}>
-                <MarketAssetSummary summary={seriesQuery.data?.summary ?? null} loading={seriesQuery.isLoading} />
+                <MarketAssetSummary summary={series?.summary ?? null} loading={seriesQuery.isLoading} />
               </div>
               <Card title="K 线与成交量" size="small" style={{ marginTop: 16 }}>
                 <MarketCandlestickChart
-                  bars={seriesQuery.data?.bars ?? []}
+                  bars={series?.bars ?? []}
                   interval={interval}
                   loading={seriesQuery.isLoading}
                 />
               </Card>
               <Card title="数据健康" size="small" style={{ marginTop: 16 }}>
                 <MarketAssetHealth
-                  availability={seriesQuery.data?.availability ?? null}
-                  quality={seriesQuery.data?.quality ?? null}
+                  availability={series?.availability ?? null}
+                  quality={series?.quality ?? null}
                   loading={seriesQuery.isLoading}
                 />
               </Card>
               <Card title="原始数据" size="small" style={{ marginTop: 16 }}>
-                <MarketAssetTable bars={seriesQuery.data?.bars ?? null} loading={seriesQuery.isLoading} />
+                <MarketAssetTable bars={series?.bars ?? null} loading={seriesQuery.isLoading} />
               </Card>
             </>
           )}
@@ -182,4 +177,14 @@ export function MarketAssetsPage() {
       )}
     </div>
   );
+}
+
+export function MarketAssetsPage() {
+  const view = useMarketAssetView();
+
+  if (!view.symbol) {
+    return <NoSymbolView onSelect={view.setSymbol} />;
+  }
+
+  return <AssetViewerContent view={view} />;
 }

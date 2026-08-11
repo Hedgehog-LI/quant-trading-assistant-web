@@ -15,7 +15,7 @@ import type {
   EntityId,
 } from '../../../shared/types/domain';
 
-interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
+export interface PageResult<T> { items: T[]; total: number; page: number; size: number; }
 
 const BASE = '/market-data';
 
