@@ -1,14 +1,17 @@
 /**
- * P1.9-A 行情资产主视图状态：URL 可分享参数 + availability 驱动的组合回退 + 三个查询。
+ * P1.9-A 行情资产主视图状态：URL 是唯一可恢复、可分享的状态源 + availability 驱动的组合回退 + 三个查询。
  *
  * - symbol / interval / from / to / adjustType / dataSource 全部可分享进 URL；
- *   非法参数回退到安全默认并重写 URL（设计 §6）；
- * - 未选证券：不请求 series / related-tasks（查询 hooks 内 enabled:false）；
+ *   selection 完全派生自 URL（useSearchParams），页面挂载、浏览器前进/后退、同路由查询参数
+ *   变化都天然恢复，不再依赖 useState 一次性初始化（修复 repair-2：旧 selection 覆盖新 URL）；
+ * - 所有 setter 直接写 URL（replace，不污染历史），避免 URL→state→URL 反馈循环；
  * - availability 加载后：当前 tuple 不在已采集组合内 → 按组合原子性自动选择合法完整组合
- *   （同 source → 同 interval → 默认），不在 effect 内 setState，避免级联渲染；
+ *   （同 source → 同 interval → 默认），由幂等的 canonicalize effect 写回 URL 恰好一次；
+ * - 非法参数安全回退：枚举非法回退默认值；from/to 不可解析（无法在控件展示）回退默认范围，
+ *   可解析但语义非法（倒置/超限）保留并透出 rangeError，series 不发起；
  * - 范围校验（倒置/超限）前置在客户端：非法时 series 不发起，页面展示错误文案。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useSearchParams, type SetURLSearchParams } from 'react-router';
 import { getSettings } from '../../settings/api/settingsApi';
 import {
@@ -21,6 +24,7 @@ import {
   isInterval,
   isValidCombo,
   matchPreset,
+  parseRangeParam,
   resolveCombo,
   validateRange,
 } from '../model/marketAssetOptions';
@@ -73,9 +77,99 @@ function defaultForInterval(combos: MarketAssetCombination[], interval: string):
   return { dataSource: first?.dataSource ?? 'LONGPORT', adjustType: first?.adjustType ?? 'NONE' };
 }
 
-function validRangeText(interval: string, from: string, to: string): { from: string; to: string } | null {
-  if (from && to && validateRange(interval, from, to) == null) return { from, to };
-  return null;
+/**
+ * from/to 可展示性校验：仅要求可解析（能在 RangePicker 展示），不校验语义。
+ * 语义非法（倒置/超限）保留在 selection 中由 rangeError 透出，避免用户输入被静默回退。
+ * 不可解析（格式与 interval 不匹配）返回 null → 回退默认范围（安全回退）。
+ */
+function parseableRange(interval: string, from: string, to: string): { from: string; to: string } | null {
+  if (!from || !to) return null;
+  const fromMs = parseRangeParam(from, interval);
+  const toMs = parseRangeParam(to, interval);
+  if (fromMs == null || toMs == null) return null;
+  return { from, to };
+}
+
+/** 从 URL 派生完整 selection：枚举非法回退默认值；from/to 不可解析回退默认范围。 */
+function parseFromUrl(searchParams: URLSearchParams, now: Date): MarketAssetSelection {
+  const interval = isInterval(searchParams.get('interval') ?? '') ? (searchParams.get('interval') as string) : '1D';
+  const adjustType = isAdjustType(searchParams.get('adjustType') ?? '') ? (searchParams.get('adjustType') as string) : 'NONE';
+  const dataSource = isDataSource(searchParams.get('dataSource') ?? '') ? (searchParams.get('dataSource') as string) : 'LONGPORT';
+  const from = searchParams.get('from') ?? '';
+  const to = searchParams.get('to') ?? '';
+  const range = parseableRange(interval, from, to) ?? defaultRangeFor(interval, now);
+  return { interval, from: range.from, to: range.to, adjustType, dataSource };
+}
+
+/** 把当前 URL 参数合并为一个完整 tuple（symbol + 有效选择），供 canonicalize 与 setter 复用。 */
+function toFullUrl(searchParams: URLSearchParams, symbol: string, selection: MarketAssetSelection): URLSearchParams {
+  const next = new URLSearchParams(searchParams);
+  if (symbol) next.set('symbol', symbol);
+  next.set('interval', selection.interval);
+  next.set('from', selection.from);
+  next.set('to', selection.to);
+  next.set('adjustType', selection.adjustType);
+  next.set('dataSource', selection.dataSource);
+  return next;
+}
+
+/** 工具栏各 setter 的入参：直接写 URL（replace），不依赖状态回灌。 */
+interface SelectionWritersParams {
+  searchParams: URLSearchParams;
+  setSearchParams: SetURLSearchParams;
+  symbol: string;
+  selection: MarketAssetSelection;
+  combos: MarketAssetCombination[];
+  now: Date;
+}
+
+/**
+ * 构建所有选择操作：setSymbol/setInterval/setAdjustType/setDataSource/applyPreset/setCustomRange。
+ * 全部直接 setSearchParams 写 URL（replace，不污染历史），selection 由 URL 派生，因此无需回写 state。
+ */
+function buildSelectionWriters(params: SelectionWritersParams): {
+  setSymbol: (symbol: string) => void;
+  setInterval: (interval: string) => void;
+  setAdjustType: (adjustType: string) => void;
+  setDataSource: (dataSource: string) => void;
+  applyPreset: (preset: RangePreset) => void;
+  setCustomRange: (from: string, to: string) => void;
+} {
+  const { searchParams, setSearchParams, symbol, selection, combos, now } = params;
+  const setSymbol = (nextSymbol: string) => {
+    const trimmed = nextSymbol.trim();
+    const range = defaultRangeFor('1D', now);
+    const next = new URLSearchParams();
+    if (trimmed) {
+      next.set('symbol', trimmed);
+      next.set('interval', '1D');
+      next.set('from', range.from);
+      next.set('to', range.to);
+      next.set('adjustType', 'NONE');
+      next.set('dataSource', 'LONGPORT');
+    }
+    setSearchParams(next, { replace: true });
+  };
+  const setInterval = (interval: string) => {
+    const def = defaultForInterval(combos, interval);
+    const range = defaultRangeFor(interval, now);
+    setSearchParams(toFullUrl(searchParams, symbol, {
+      interval, from: range.from, to: range.to, adjustType: def.adjustType, dataSource: def.dataSource,
+    }), { replace: true });
+  };
+  const setAdjustType = (adjustType: string) => {
+    setSearchParams(toFullUrl(searchParams, symbol, { ...selection, adjustType }), { replace: true });
+  };
+  const setDataSource = (dataSource: string) => {
+    setSearchParams(toFullUrl(searchParams, symbol, { ...selection, dataSource }), { replace: true });
+  };
+  const applyPreset = (preset: RangePreset) => {
+    setSearchParams(toFullUrl(searchParams, symbol, { ...selection, from: preset.from, to: preset.to }), { replace: true });
+  };
+  const setCustomRange = (from: string, to: string) => {
+    setSearchParams(toFullUrl(searchParams, symbol, { ...selection, from, to }), { replace: true });
+  };
+  return { setSymbol, setInterval, setAdjustType, setDataSource, applyPreset, setCustomRange };
 }
 
 /**
@@ -116,43 +210,14 @@ function deriveViewOptions(
   };
 }
 
-/** 选择变化 → 同步 URL（replace，保持可分享）。未选证券时不写 URL。 */
-function useSelectionUrlSync(
-  symbol: string,
-  reconciled: MarketAssetSelection,
-  searchParams: URLSearchParams,
-  setSearchParams: SetURLSearchParams,
-) {
-  useEffect(() => {
-    if (!symbol) return;
-    const next = new URLSearchParams(searchParams);
-    next.set('symbol', symbol);
-    next.set('interval', reconciled.interval);
-    next.set('from', reconciled.from);
-    next.set('to', reconciled.to);
-    next.set('adjustType', reconciled.adjustType);
-    next.set('dataSource', reconciled.dataSource);
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [symbol, reconciled, searchParams, setSearchParams]);
-}
-
 export function useMarketAssetView(): UseMarketAssetViewResult {
   const [searchParams, setSearchParams] = useSearchParams();
   const now = useMemo(() => new Date(), []);
 
   const symbol = searchParams.get('symbol')?.trim() ?? '';
 
-  const [selection, setSelection] = useState<MarketAssetSelection>(() => {
-    const interval = isInterval(searchParams.get('interval') ?? '') ? (searchParams.get('interval') as string) : '1D';
-    const adjustType = isAdjustType(searchParams.get('adjustType') ?? '') ? (searchParams.get('adjustType') as string) : 'NONE';
-    const dataSource = isDataSource(searchParams.get('dataSource') ?? '') ? (searchParams.get('dataSource') as string) : 'LONGPORT';
-    const from = searchParams.get('from') ?? '';
-    const to = searchParams.get('to') ?? '';
-    const range = validRangeText(interval, from, to) ?? defaultRangeFor(interval, now);
-    return { interval, from: range.from, to: range.to, adjustType, dataSource };
-  });
+  // selection 完全派生自 URL（单一状态源），而非 useState 一次性初始化。
+  const selection = useMemo(() => parseFromUrl(searchParams, now), [searchParams, now]);
 
   const availabilityQuery = useMarketAssetAvailability(symbol);
   const combos = useMemo(() => availabilityQuery.data?.combinations ?? [], [availabilityQuery.data]);
@@ -161,7 +226,16 @@ export function useMarketAssetView(): UseMarketAssetViewResult {
     () => reconcileSelection(selection, combos, now),
     [selection, combos, now],
   );
-  useSelectionUrlSync(symbol, reconciled, searchParams, setSearchParams);
+
+  // 幂等 canonicalize：仅当“有效选择”与 URL 不一致时写回（组合原子性 / 不可解析参数回退）。
+  // 写回后 selection 重新派生即与 URL 一致，不会再触发，因此恰好一次、无反馈循环。
+  useEffect(() => {
+    if (!symbol) return;
+    const next = toFullUrl(searchParams, symbol, reconciled);
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [symbol, reconciled, searchParams, setSearchParams]);
 
   const options = useMemo(
     () => deriveViewOptions(combos, reconciled.interval, reconciled.dataSource, now),
@@ -185,29 +259,10 @@ export function useMarketAssetView(): UseMarketAssetViewResult {
   const seriesQuery = useMarketAssetSeries(seriesParams);
   const relatedQuery = useMarketAssetRelatedTasks(symbol, reconciled.interval);
 
-  const setSymbol = (nextSymbol: string) => {
-    const trimmed = nextSymbol.trim();
-    const next = new URLSearchParams();
-    if (trimmed) next.set('symbol', trimmed);
-    setSearchParams(next, { replace: true });
-    const range = defaultRangeFor('1D', now);
-    setSelection({ interval: '1D', from: range.from, to: range.to, adjustType: 'NONE', dataSource: 'LONGPORT' });
-  };
-
-  const setInterval = (interval: string) => {
-    const def = defaultForInterval(combos, interval);
-    const range = defaultRangeFor(interval, now);
-    setSelection({ interval, from: range.from, to: range.to, adjustType: def.adjustType, dataSource: def.dataSource });
-  };
-
-  const setAdjustType = (adjustType: string) => setSelection((prev) => ({ ...prev, adjustType }));
-  const setDataSource = (dataSource: string) => setSelection((prev) => ({ ...prev, dataSource }));
-  const applyPreset = (preset: RangePreset) => setSelection((prev) => ({ ...prev, from: preset.from, to: preset.to }));
-  const setCustomRange = (from: string, to: string) => setSelection((prev) => ({ ...prev, from, to }));
+  const writers = buildSelectionWriters({ searchParams, setSearchParams, symbol, selection, combos, now });
 
   return {
     symbol,
-    setSymbol,
     interval: reconciled.interval,
     from: reconciled.from,
     to: reconciled.to,
@@ -221,11 +276,7 @@ export function useMarketAssetView(): UseMarketAssetViewResult {
     rangeError,
     hasCombinations: combos.length > 0,
     availabilityLoading: availabilityQuery.isLoading,
-    setInterval,
-    setAdjustType,
-    setDataSource,
-    applyPreset,
-    setCustomRange,
+    ...writers,
     seriesParams,
     apiMode: getSettings().apiMode,
     availabilityQuery,
