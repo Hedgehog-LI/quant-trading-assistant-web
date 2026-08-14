@@ -48,7 +48,7 @@ function demoSectors(market: ResearchMarket): MarketResearchSector[] {
   }));
 }
 
-function demoHistory(sectorId: number): MarketResearchSectorHistory {
+function demoHistory(sectorId: number, oneDay = false): MarketResearchSectorHistory {
   const index = Math.max(0, Math.min(DEMO_NAMES.length - 1, sectorId - 9001));
   const offsets = [-0.18, -0.11, -0.15, -0.06, -0.02, 0.04, 0.01, 0.08, 0.05, 0.1];
   return {
@@ -56,35 +56,56 @@ function demoHistory(sectorId: number): MarketResearchSectorHistory {
     sectorName: DEMO_NAMES[index],
     points: offsets.map((offset, pointIndex) => ({
       asOfDate: `2026-08-${String(pointIndex + 3).padStart(2, '0')}`,
-      publicationBatchId: 7000 + pointIndex,
+      publicationBatchId: oneDay ? null : 7000 + pointIndex,
+      sourceBatchId: 7000 + pointIndex,
       rsRankPercentile: Math.max(0.04, Math.min(0.96, DEMO_RS[index] + offset)),
       currentRank: Math.max(1, Math.round((1 - Math.max(0.04, Math.min(0.96, DEMO_RS[index] + offset))) * 8)),
-      meanRankPercentile: DEMO_RS[index] - 0.04,
+      meanRankPercentile: oneDay ? null : DEMO_RS[index] - 0.04,
       qualityStatus: 'OK',
     })),
   };
 }
 
 function demoRadar(market: ResearchMarket, windowDays: number): MarketResearchRadar {
-  const sectors = demoSectors(market);
+  const oneDay = windowDays === 1;
+  const sectors = demoSectors(market).map((sector, index) => oneDay ? {
+    ...sector,
+    currentRank: index + 1,
+    previousRank: null,
+    meanRankPercentile: null,
+    rankPercentileStdDev: null,
+    topBucketOccupancyRate: null,
+    consecutiveLeadingDays: null,
+    consecutiveLaggingDays: null,
+    rankPercentileChange: null,
+    rotationState: 'INSUFFICIENT_DATA' as RotationState,
+    evidence: [
+      `当日涨跌 ${((sector.sectorReturn ?? 0) * 100).toFixed(1)}%`,
+      `当日强度百分位 ${((sector.rsRankPercentile ?? 0) * 100).toFixed(0)}%`,
+    ],
+    reasonCodes: ['ONE_DAY_STRENGTH_ONLY', 'ROTATION_REQUIRES_5_DAYS'],
+  } : sector);
   return {
-    publicationBatchId: 7009,
-    strengthCalculationRunId: 7101,
-    momentumCalculationRunId: 7102,
+    publicationBatchId: oneDay ? null : 7009,
+    sourceBatchId: 7009,
+    strengthCalculationRunId: oneDay ? null : 7101,
+    momentumCalculationRunId: oneDay ? null : 7102,
+    analysisMode: oneDay ? 'ONE_DAY_STRENGTH' : 'MULTI_DAY_ROTATION',
+    rotationAvailable: !oneDay,
     market,
     asOfDate: '2026-08-12',
     strengthWindowDays: windowDays,
-    momentumWindowDays: 5,
+    momentumWindowDays: oneDay ? 0 : 5,
     scope: 'RANKED_UNIVERSE',
     scopeDescription: '排行样本，不代表全市场',
     strengthFormulaCode: 'RELATIVE_STRENGTH',
-    momentumFormulaCode: 'ROTATION_PERSISTENCE',
+    momentumFormulaCode: oneDay ? null : 'ROTATION_PERSISTENCE',
     formulaVersion: 'v1',
-    parameterHash: 'LOCAL_DEMO',
+    parameterHash: oneDay ? null : 'LOCAL_DEMO',
     qualityStatus: 'OK',
     reasonCodes: ['LOCAL_DEMO', 'CAPITAL_FLOW_UNAVAILABLE'],
     sourceQuoteTime: '2026-08-12T15:10:00',
-    publishedAt: '2026-08-12T15:12:00',
+    publishedAt: oneDay ? null : '2026-08-12T15:12:00',
     actualItemCount: sectors.length,
     expectedItemCount: 100,
     coverageRate: sectors.length / 100,
@@ -115,7 +136,7 @@ export function getMarketResearchRankingHistory(
 ): Promise<MarketResearchRankingHistory> {
   if (getSettings().apiMode === 'mock') {
     return Promise.resolve({ market, windowDays, scope: 'RANKED_UNIVERSE',
-      sectors: demoSectors(market).map((sector) => demoHistory(sector.sectorId)) });
+      sectors: demoSectors(market).map((sector) => demoHistory(sector.sectorId, windowDays === 1)) });
   }
   return unwrap<MarketResearchRankingHistory>(client.get('/market-research/sectors/ranking-history', {
     params: { market, window: windowDays, days },
@@ -130,9 +151,11 @@ export function getMarketResearchSectorDetail(
     const sector = sectors.find((item) => item.sectorId === sectorId) ?? sectors[0];
     return Promise.resolve({ sectorId: sector.sectorId, sectorName: sector.sectorName,
       providerSectorId: sector.providerSectorId, taxonomyVersion: 'LOCAL_DEMO_V1', market, windowDays,
+      analysisMode: windowDays === 1 ? 'ONE_DAY_STRENGTH' : 'MULTI_DAY_ROTATION',
+      rotationAvailable: windowDays !== 1,
       scope: 'RANKED_UNIVERSE', scopeDescription: '排行样本，不代表全市场',
       leadingName: sector.leadingName, leadingSymbol: sector.leadingSymbol, trackingSymbol: null,
-      history: demoHistory(sector.sectorId).points, sourceQuoteTime: '2026-08-12T15:10:00',
+      history: demoHistory(sector.sectorId, windowDays === 1).points, sourceQuoteTime: '2026-08-12T15:10:00',
       actualItemCount: 8, expectedItemCount: 100, coverageRate: 0.08,
       qualityStatus: 'OK', reasonCodes: ['LOCAL_DEMO'] });
   }

@@ -37,16 +37,21 @@ beforeEach(() => {
 });
 
 describe('MarketResearchPage', () => {
-  it('同屏展示热力、轮动、排行证据和显著演示水印', async () => {
+  it('默认以1日强度展示热力、强弱梯队和当日证据', async () => {
     render(<MarketResearchPage />, { wrapper: Wrapper });
 
     expect(await screen.findByRole('heading', { name: '市场雷达' })).toBeInTheDocument();
     expect(screen.getByText('LOCAL_DEMO', { selector: '.research-demo-watermark' })).toBeInTheDocument();
     expect(await screen.findByTestId('research-heatmap')).toBeInTheDocument();
-    expect(screen.getByTestId('rotation-matrix')).toBeInTheDocument();
+    expect(screen.getByTestId('one-day-strength-ladder')).toBeInTheDocument();
+    expect(screen.queryByTestId('rotation-matrix')).not.toBeInTheDocument();
+    expect(screen.getByText('当日横截面强度 · 轮动需至少5日')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '生成结果' })).not.toBeInTheDocument();
     expect(screen.getByText('板块排行与证据')).toBeInTheDocument();
-    expect(screen.getAllByText(/相对强弱百分位/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('源排名').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/当日强度百分位/).length).toBeGreaterThan(0);
     expect(screen.getByText('当前没有可验证的真实资金流口径')).toBeInTheDocument();
+    expect(screen.getByText(/只展示最新收盘的横截面强弱/)).toBeInTheDocument();
     expect(screen.queryByText('贵州茅台')).not.toBeInTheDocument();
   });
 
@@ -57,10 +62,15 @@ describe('MarketResearchPage', () => {
     await user.click(await screen.findByRole('button', { name: '查看云启材料板块详情' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('location-probe')).toHaveTextContent('/market-research/sectors/9001?market=CN&window=20');
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/market-research/sectors/9001?market=CN&window=1');
     });
     expect(await screen.findByRole('heading', { name: '云启材料' })).toBeInTheDocument();
     expect(screen.getByTestId('sector-history-chart')).toBeInTheDocument();
+    expect(screen.getByText('每日强度历史')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '板块每日强度历史轨迹' })).toBeInTheDocument();
+    const titles = Array.from(document.querySelectorAll('.sector-history-chart title'));
+    expect(titles[0]).toHaveTextContent('2026-08-03');
+    expect(titles.at(-1)).toHaveTextContent('2026-08-12');
     expect(screen.getByText('当前详情只展示已验证证据')).toBeInTheDocument();
   });
 });

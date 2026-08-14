@@ -5,6 +5,7 @@ import { saveSettings } from '../../settings/api/settingsApi';
 import {
   calculateMarketResearch,
   getMarketResearchRadar,
+  getMarketResearchRankingHistory,
   getMarketResearchReadiness,
   getMarketResearchSectorDetail,
 } from './marketResearchApi';
@@ -37,6 +38,24 @@ describe('marketResearchApi', () => {
     expect(radar.sectors.every((sector) => sector.leadingSymbol?.startsWith('DEMO.HK'))).toBe(true);
     expect(detail.providerSectorId).toMatch(/^DEMO\/US\//);
     expect(detail.leadingSymbol).toMatch(/^DEMO\.US/);
+  });
+
+  it('一日 mock 不伪造发布批次或持续性指标', async () => {
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+
+    const radar = await getMarketResearchRadar('CN', 1);
+    const rankingHistory = await getMarketResearchRankingHistory('CN', 1);
+    const detail = await getMarketResearchSectorDetail(9001, 'CN', 1);
+
+    expect(radar.publicationBatchId).toBeNull();
+    expect(radar.rotationAvailable).toBe(false);
+    expect(radar.sectors.every((sector) => sector.meanRankPercentile == null)).toBe(true);
+    expect(radar.sectors.every((sector) => sector.consecutiveLeadingDays == null)).toBe(true);
+    expect(radar.sectors.every((sector) => sector.consecutiveLaggingDays == null)).toBe(true);
+    expect(rankingHistory.sectors.flatMap((sector) => sector.points)
+      .every((point) => point.publicationBatchId == null && point.meanRankPercentile == null)).toBe(true);
+    expect(detail.history.every((point) => point.publicationBatchId == null)).toBe(true);
+    expect(detail.history.every((point) => point.meanRankPercentile == null)).toBe(true);
   });
 
   it('remote 只调用 market-research 后端接口并透传窗口', async () => {

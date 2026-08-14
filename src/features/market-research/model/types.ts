@@ -29,8 +29,8 @@ export interface MarketResearchSector {
   meanRankPercentile: number | null;
   rankPercentileStdDev: number | null;
   topBucketOccupancyRate: number | null;
-  consecutiveLeadingDays: number;
-  consecutiveLaggingDays: number;
+  consecutiveLeadingDays: number | null;
+  consecutiveLaggingDays: number | null;
   rankPercentileChange: number | null;
   rotationState: RotationState;
   leadingName: string | null;
@@ -40,9 +40,12 @@ export interface MarketResearchSector {
 }
 
 export interface MarketResearchRadar {
-  publicationBatchId: number;
-  strengthCalculationRunId: number;
-  momentumCalculationRunId: number;
+  publicationBatchId: number | null;
+  sourceBatchId: number | null;
+  strengthCalculationRunId: number | null;
+  momentumCalculationRunId: number | null;
+  analysisMode: 'ONE_DAY_STRENGTH' | 'MULTI_DAY_ROTATION';
+  rotationAvailable: boolean;
   market: ResearchMarket;
   asOfDate: string;
   strengthWindowDays: number;
@@ -50,13 +53,13 @@ export interface MarketResearchRadar {
   scope: string;
   scopeDescription: string;
   strengthFormulaCode: string;
-  momentumFormulaCode: string;
+  momentumFormulaCode: string | null;
   formulaVersion: string;
-  parameterHash: string;
+  parameterHash: string | null;
   qualityStatus: string;
   reasonCodes: string[];
   sourceQuoteTime: string | null;
-  publishedAt: string;
+  publishedAt: string | null;
   actualItemCount: number;
   expectedItemCount: number;
   coverageRate: number | null;
@@ -67,7 +70,8 @@ export interface MarketResearchRadar {
 
 export interface MarketResearchHistoryPoint {
   asOfDate: string;
-  publicationBatchId: number;
+  publicationBatchId: number | null;
+  sourceBatchId: number | null;
   rsRankPercentile: number | null;
   currentRank: number | null;
   meanRankPercentile: number | null;
@@ -94,6 +98,8 @@ export interface MarketResearchSectorDetail {
   taxonomyVersion: string;
   market: ResearchMarket;
   windowDays: number;
+  analysisMode: 'ONE_DAY_STRENGTH' | 'MULTI_DAY_ROTATION';
+  rotationAvailable: boolean;
   scope: string;
   scopeDescription: string;
   leadingName: string | null;
