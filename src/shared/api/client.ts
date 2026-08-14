@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import { getItem } from './localStorageClient';
 import type { ApiResponse } from './types';
+import { normalizeApiError } from './errors';
 
 const API_PREFIX = '/api/v1';
 
@@ -57,7 +58,7 @@ client.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('[API Error]', error?.response?.data ?? error.message);
-    return Promise.reject(error);
+    return Promise.reject(normalizeApiError(error));
   },
 );
 

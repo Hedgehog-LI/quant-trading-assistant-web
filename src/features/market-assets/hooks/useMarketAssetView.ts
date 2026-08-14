@@ -257,7 +257,7 @@ export function useMarketAssetView(): UseMarketAssetViewResult {
       : null;
 
   const seriesQuery = useMarketAssetSeries(seriesParams);
-  const relatedQuery = useMarketAssetRelatedTasks(symbol, reconciled.interval);
+  const relatedQuery = useMarketAssetRelatedTasks(symbol, reconciled.interval, availabilityQuery.isSuccess);
 
   const writers = buildSelectionWriters({ searchParams, setSearchParams, symbol, selection, combos, now });
 

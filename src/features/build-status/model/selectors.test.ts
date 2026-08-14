@@ -112,8 +112,8 @@ describe('computeOverviewStats', () => {
     const map = Object.fromEntries(byStatus.map((s) => [s.status, s.count]));
     expect(map.BLOCKED).toBe(0);
     expect(map.DEFERRED).toBeGreaterThan(0);
-    // P1.10-A 已完成自动化，但真实数据运行时尚未验收，因此保留一个 IN_PROGRESS 叶节点。
-    expect(map.IN_PROGRESS).toBe(1);
+    // P1.10-A 待真实数据运行验收；P1.9-D 已完成本地运行验证，但尚未提交和部署。
+    expect(map.IN_PROGRESS).toBe(2);
     expect(map.DELIVERED).toBeGreaterThan(0);
     expect(map.PLANNED + map.DESIGNED).toBeGreaterThan(0);
   });

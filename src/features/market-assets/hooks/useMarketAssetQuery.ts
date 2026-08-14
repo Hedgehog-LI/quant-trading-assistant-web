@@ -10,13 +10,22 @@ import { useQuery } from '@tanstack/react-query';
 import { getSettings } from '../../settings/api/settingsApi';
 import {
   getMarketAssetAvailability,
+  getMarketAssetCatalog,
   getMarketAssetRelatedTasks,
   getMarketAssetSeries,
 } from '../api/marketAssetApi';
-import type { MarketAssetSeriesParams } from '../model/types';
+import type { MarketAssetCatalogFilter, MarketAssetSeriesParams } from '../model/types';
 
 function apiMode(): 'mock' | 'remote' {
   return getSettings().apiMode;
+}
+
+/** 已真正落入日 K 或分钟 K 的资产目录。 */
+export function useMarketAssetCatalog(filter: MarketAssetCatalogFilter) {
+  return useQuery({
+    queryKey: ['market-assets', 'catalog', filter.market ?? 'ALL', filter.keyword ?? '', filter.page ?? 1, filter.size ?? 20, apiMode()],
+    queryFn: () => getMarketAssetCatalog(filter),
+  });
 }
 
 /** 未选证券时可用：按 symbol 查询组合覆盖概况。 */
@@ -49,10 +58,10 @@ export function useMarketAssetSeries(params: MarketAssetSeriesParams | null) {
 }
 
 /** 相关采集计划/记录；interval 可选，为 undefined 时返回全部粒度。 */
-export function useMarketAssetRelatedTasks(canonicalSymbol: string, interval?: string) {
+export function useMarketAssetRelatedTasks(canonicalSymbol: string, interval?: string, enabled = true) {
   return useQuery({
     queryKey: ['market-assets', 'related-tasks', canonicalSymbol, interval ?? 'ALL', apiMode()],
     queryFn: () => getMarketAssetRelatedTasks(canonicalSymbol, interval),
-    enabled: canonicalSymbol.trim().length > 0,
+    enabled: enabled && canonicalSymbol.trim().length > 0,
   });
 }

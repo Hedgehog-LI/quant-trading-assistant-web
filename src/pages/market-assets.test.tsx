@@ -9,9 +9,11 @@ import { MarketAssetsPage } from './market-assets';
 import { clearAll } from '../shared/api/localStorageClient';
 import { saveSettings } from '../features/settings/api/settingsApi';
 import type { MarketAssetSeries } from '../features/market-assets/model/types';
+import { ApiRequestError } from '../shared/api/errors';
 
 const mocks = vi.hoisted(() => ({
   getMarketAssetAvailability: vi.fn(),
+  getMarketAssetCatalog: vi.fn(),
   getMarketAssetSeries: vi.fn(),
   getMarketAssetRelatedTasks: vi.fn(),
 }));
@@ -24,6 +26,7 @@ vi.mock('../features/market-assets/api/marketAssetApi', async () => {
   return {
     ...actual,
     getMarketAssetAvailability: mocks.getMarketAssetAvailability,
+    getMarketAssetCatalog: mocks.getMarketAssetCatalog,
     getMarketAssetSeries: mocks.getMarketAssetSeries,
     getMarketAssetRelatedTasks: mocks.getMarketAssetRelatedTasks,
   };
@@ -144,40 +147,66 @@ beforeEach(() => {
   saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
   vi.clearAllMocks();
   mocks.getMarketAssetAvailability.mockResolvedValue(AVAILABILITY);
+  mocks.getMarketAssetCatalog.mockResolvedValue({
+    items: [{
+      security: SECURITY,
+      dailyBarCount: 20,
+      minuteBarCount: 48,
+      minuteIntervalCount: 1,
+      firstDailyDate: '2026-07-01',
+      lastDailyDate: '2026-07-31',
+      firstMinuteTime: '2026-07-17T09:30:00+08:00',
+      lastMinuteTime: '2026-07-17T15:00:00+08:00',
+      latestFetchedAt: '2026-07-31T15:01:00+08:00',
+    }],
+    total: 1,
+    page: 1,
+    size: 20,
+  });
   mocks.getMarketAssetSeries.mockResolvedValue(SERIES);
   mocks.getMarketAssetRelatedTasks.mockResolvedValue(RELATED);
 });
 
 describe('MarketAssetsPage', () => {
-  it('未选证券：显示证券选择器与常用入口，不请求 series', () => {
+  it('未选证券：显示真实已入库资产目录，不请求 series', async () => {
     render(<MarketAssetsPage />, { wrapper: makeWrapper() });
-    expect(screen.getByText('选择证券')).toBeInTheDocument();
-    expect(screen.getByTestId('quick-access-SH.600519')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('贵州茅台')).toBeInTheDocument());
+    expect(screen.getByText('日 K 20 条')).toBeInTheDocument();
+    expect(mocks.getMarketAssetCatalog).toHaveBeenCalled();
     expect(mocks.getMarketAssetSeries).not.toHaveBeenCalled();
     expect(mocks.getMarketAssetAvailability).not.toHaveBeenCalled();
   });
 
-  it('点击常用证券入口：触发 availability + series，显示 LOCAL_DEMO 与图表卡片', async () => {
+  it('点击资产目录查看：触发 availability + series 并展示图表', async () => {
     render(<MarketAssetsPage />, { wrapper: makeWrapper() });
-    fireEvent.click(screen.getByTestId('quick-access-SH.600519'));
+    await waitFor(() => expect(screen.getByTestId('open-asset-SH.600519')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('open-asset-SH.600519'));
     await waitFor(() => expect(mocks.getMarketAssetAvailability).toHaveBeenCalledWith('SH.600519'));
     await waitFor(() => expect(mocks.getMarketAssetSeries).toHaveBeenCalled());
-    expect(screen.getByTestId('local-demo-tag')).toBeInTheDocument();
     expect(screen.getByText('K 线与成交量')).toBeInTheDocument();
   });
 
   it('availability 无组合：提示尚未采集，不请求 series', async () => {
     mocks.getMarketAssetAvailability.mockResolvedValue({ security: SECURITY, combinations: [] });
-    render(<MarketAssetsPage />, { wrapper: makeWrapper() });
-    fireEvent.click(screen.getByTestId('quick-access-SH.600519'));
+    render(<MarketAssetsPage />, { wrapper: makeWrapper('/market-assets?symbol=SH.600519') });
     await waitFor(() => expect(screen.getByText(/尚未采集该证券数据/)).toBeInTheDocument());
+    expect(mocks.getMarketAssetSeries).not.toHaveBeenCalled();
+  });
+
+  it('证券未登记：展示可操作业务空态，不泄漏原始 404 文本', async () => {
+    mocks.getMarketAssetAvailability.mockRejectedValue(
+      new ApiRequestError('STOCK_NOT_FOUND', '证券不存在: SH.600519', 404),
+    );
+    render(<MarketAssetsPage />, { wrapper: makeWrapper('/market-assets?symbol=SH.600519') });
+    await waitFor(() => expect(screen.getByText('尚未建立该证券的行情资产')).toBeInTheDocument());
+    expect(screen.getByText('去行情工作台')).toBeInTheDocument();
+    expect(screen.queryByText('Request failed with status code 404')).not.toBeInTheDocument();
     expect(mocks.getMarketAssetSeries).not.toHaveBeenCalled();
   });
 
   it('series 失败：显示错误与重试，点击重试重新请求', async () => {
     mocks.getMarketAssetSeries.mockRejectedValueOnce(new Error('范围过大'));
-    render(<MarketAssetsPage />, { wrapper: makeWrapper() });
-    fireEvent.click(screen.getByTestId('quick-access-SH.600519'));
+    render(<MarketAssetsPage />, { wrapper: makeWrapper('/market-assets?symbol=SH.600519') });
     await waitFor(() => expect(screen.getByText(/行情数据查询失败/)).toBeInTheDocument());
     expect(mocks.getMarketAssetSeries).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('series-retry'));

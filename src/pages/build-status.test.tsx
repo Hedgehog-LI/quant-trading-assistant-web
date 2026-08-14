@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router';
 import { describe, it, expect } from 'vitest';
 import { BuildStatusPage } from './build-status';
 import { buildStatusSnapshot } from '../features/build-status/data/buildStatusSnapshot';
-import { RECENT_DELIVERIES_DEFAULT } from '../features/build-status/model/selectors';
+import { RECENT_DELIVERIES_DEFAULT, RECENT_DELIVERIES_MAX } from '../features/build-status/model/selectors';
 
 function renderPage() {
   return render(
@@ -40,11 +40,14 @@ describe('BuildStatusPage（V2 看板）', () => {
   it('最近交付默认展示 6 条，可展开到全部', () => {
     renderPage();
     expect(countTimelineItems()).toBe(RECENT_DELIVERIES_DEFAULT);
+    const expandLabel = buildStatusSnapshot.recentDeliveries.length >= RECENT_DELIVERIES_MAX
+      ? `展开到 ${RECENT_DELIVERIES_MAX} 条`
+      : `展开全部（${buildStatusSnapshot.recentDeliveries.length} 条）`;
     const expand = screen.getByRole('button', {
-      name: `展开全部（${buildStatusSnapshot.recentDeliveries.length} 条）`,
+      name: expandLabel,
     });
     fireEvent.click(expand);
-    expect(countTimelineItems()).toBe(buildStatusSnapshot.recentDeliveries.length);
+    expect(countTimelineItems()).toBe(Math.min(buildStatusSnapshot.recentDeliveries.length, RECENT_DELIVERIES_MAX));
   });
 
   it('最近交付按日期倒序展示，第一条为最新', () => {

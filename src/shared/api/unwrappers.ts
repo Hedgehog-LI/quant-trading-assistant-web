@@ -6,12 +6,13 @@
  * - unwrapVoid：无返回体的接口（如 DELETE），只检查 success（data 合法为 null）。
  */
 import type { ApiResponse } from './types';
+import { ApiRequestError } from './errors';
 
 export async function unwrap<T>(p: Promise<{ data: ApiResponse<T> }>): Promise<T> {
   const res = await p;
   const body = res.data;
   if (!body.success || body.data == null) {
-    throw new Error(body.message ?? '接口返回失败');
+    throw new ApiRequestError(body.code, body.message ?? '接口返回失败');
   }
   return body.data;
 }
@@ -20,7 +21,7 @@ export async function unwrapVoid(p: Promise<{ data: ApiResponse<unknown> }>): Pr
   const res = await p;
   const body = res.data;
   if (!body.success) {
-    throw new Error(body.message ?? '接口返回失败');
+    throw new ApiRequestError(body.code, body.message ?? '接口返回失败');
   }
 }
 
@@ -29,7 +30,7 @@ export async function unwrapNullable<T>(p: Promise<{ data: ApiResponse<T> }>): P
   const res = await p;
   const body = res.data;
   if (!body.success) {
-    throw new Error(body.message ?? '接口返回失败');
+    throw new ApiRequestError(body.code, body.message ?? '接口返回失败');
   }
   return body.data ?? null;
 }

@@ -1,10 +1,10 @@
 /**
  * P1.9-A 行情资产只读 API：availability / series / related-tasks。
  *
- * mock 与 remote 同形。mock 为固定小样本的确定性演示数据（LOCAL_DEMO）：
+ * mock 与 remote 同形。mock 为固定虚构证券的确定性本地样例数据：
  * - 只覆盖有限证券，时间均为演示窗口；
  * - 不伪造真实采集成功：watermarkTime / latestFetchedAt / fetchedAt 均为 null，
- *   覆盖率标 UNKNOWN，related-tasks 仅给出一条显式 LOCAL_DEMO 的计划；
+ *   覆盖率标 UNKNOWN，related-tasks 不伪造采集计划；
  * - 生成逻辑确定性（无随机），支持按 from/to 范围生成并受 200 bars 上限约束。
  *
  * remote 走新只读 API；remote 空数据不回退 mock（由 pick 直接决定数据源）。
@@ -15,8 +15,9 @@ import { getSettings } from '../../settings/api/settingsApi';
 import type {
   MarketAssetAvailability,
   MarketAssetBar,
+  MarketAssetCatalogFilter,
+  MarketAssetCatalogPage,
   MarketAssetRelatedTasks,
-  MarketAssetRelatedTaskItem,
   MarketAssetSecurity,
   MarketAssetSeries,
   MarketAssetSeriesParams,
@@ -26,10 +27,7 @@ const MAX_MOCK_BARS = 200;
 const STORAGE_OFFSET_MS = 8 * 3600 * 1000;
 
 const MOCK_SECURITIES: Record<string, MarketAssetSecurity> = {
-  'SH.600519': { canonicalSymbol: 'SH.600519', displayName: '贵州茅台', market: 'SH', currency: 'CNY', timeZone: 'Asia/Shanghai' },
-  'SZ.000001': { canonicalSymbol: 'SZ.000001', displayName: '平安银行', market: 'SZ', currency: 'CNY', timeZone: 'Asia/Shanghai' },
-  'HK.00700': { canonicalSymbol: 'HK.00700', displayName: '腾讯控股', market: 'HK', currency: 'HKD', timeZone: 'Asia/Hong_Kong' },
-  'US.AAPL': { canonicalSymbol: 'US.AAPL', displayName: 'Apple Inc.', market: 'US', currency: 'USD', timeZone: 'America/New_York' },
+  'US.QTA': { canonicalSymbol: 'US.QTA', displayName: 'QTA Sample', market: 'US', currency: 'USD', timeZone: 'America/New_York' },
 };
 
 function seedFor(symbol: string): number {
@@ -83,7 +81,7 @@ function isoShanghai(ms: number): string {
     + `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}+08:00`;
 }
 
-/** 确定性生成演示 K 线（LOCAL_DEMO）：按范围生成，受 200 上限约束。 */
+/** 确定性生成虚构样例 K 线：按范围生成，受 200 上限约束。 */
 function generateMockBars(params: MarketAssetSeriesParams): { bars: MarketAssetBar[]; truncated: boolean } {
   const seed = seedFor(params.canonicalSymbol);
   const base = 60 + (seed % 140);
@@ -152,6 +150,30 @@ function summarize(bars: MarketAssetBar[]) {
 }
 
 const mockApi = {
+  getCatalog: async (filter: MarketAssetCatalogFilter): Promise<MarketAssetCatalogPage> => {
+    const keyword = filter.keyword?.trim().toLowerCase() ?? '';
+    const market = filter.market?.trim().toUpperCase() ?? '';
+    const all = Object.values(MOCK_SECURITIES)
+      .filter((security) => !market || security.market === market)
+      .filter((security) => !keyword
+        || security.canonicalSymbol.toLowerCase().includes(keyword)
+        || security.displayName.toLowerCase().includes(keyword))
+      .map((security) => ({
+        security,
+        dailyBarCount: 20,
+        minuteBarCount: 52,
+        minuteIntervalCount: 2,
+        firstDailyDate: '2026-07-01',
+        lastDailyDate: '2026-07-31',
+        firstMinuteTime: '2026-07-17T09:30:00+08:00',
+        lastMinuteTime: '2026-07-17T15:00:00+08:00',
+        latestFetchedAt: null,
+      }));
+    const page = filter.page ?? 1;
+    const size = filter.size ?? 20;
+    return { items: all.slice((page - 1) * size, page * size), total: all.length, page, size };
+  },
+
   getAvailability: async (canonicalSymbol: string): Promise<MarketAssetAvailability> => {
     const security = MOCK_SECURITIES[canonicalSymbol];
     if (!security) {
@@ -210,7 +232,7 @@ const mockApi = {
         truncated,
         reasonCodes: truncated ? ['TRUNCATED'] : [],
         freshness: 'UNKNOWN',
-        freshnessDetail: '演示数据未连接真实交易日历',
+      freshnessDetail: '本地样例未配置交易日历',
       },
       summary: {
         ...summary,
@@ -225,25 +247,13 @@ const mockApi = {
     if (!security) {
       throw new Error('证券不存在');
     }
-    const samplePlan: MarketAssetRelatedTaskItem = {
-      kind: 'PLAN',
-      id: -1,
-      name: 'LOCAL_DEMO 样例计划',
-      taskType: 'MOCK',
-      intervalType: '5M',
-      status: 'DISABLED',
-      startDate: null,
-      endDate: null,
-      startedAt: null,
-      finishedAt: null,
-      errorCode: null,
-      errorMessage: '演示数据，不代表真实采集计划',
-    };
-    return { security, plans: [samplePlan], runs: [] };
+    return { security, plans: [], runs: [] };
   },
 };
 
 const remoteApi = {
+  getCatalog: (filter: MarketAssetCatalogFilter) =>
+    unwrap<MarketAssetCatalogPage>(client.get('/market-data/assets', { params: filter })),
   getAvailability: (canonicalSymbol: string) =>
     unwrap<MarketAssetAvailability>(
       client.get(`/market-data/assets/${encodeURIComponent(canonicalSymbol)}/availability`),
@@ -274,6 +284,10 @@ function pick<T>(mock: T, remote: T): T {
 
 export function getMarketAssetAvailability(canonicalSymbol: string) {
   return pick(mockApi.getAvailability, remoteApi.getAvailability)(canonicalSymbol);
+}
+
+export function getMarketAssetCatalog(filter: MarketAssetCatalogFilter = {}) {
+  return pick(mockApi.getCatalog, remoteApi.getCatalog)(filter);
 }
 
 export function getMarketAssetSeries(params: MarketAssetSeriesParams) {

@@ -118,6 +118,7 @@ describe('buildStatusSnapshot 数据完整性', () => {
       '/market-workspace',
       '/market-segments',
       '/market-research',
+      '/market-assets',
       '/settings',
     ];
     expect(buildStatusSnapshot.readyToUse.length).toBeGreaterThan(0);

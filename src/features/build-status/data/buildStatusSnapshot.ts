@@ -23,6 +23,15 @@ const DEFAULT_ACCEPTANCE_V011 = 'docs/acceptance/ACCEPTANCE_LOG.md · v0.1.1 基
 const recentDeliveries: BuildDeliveryRecord[] = [
   {
     deliveredAt: '2026-08-13',
+    title: 'P1.9-D 行情采集与资产查看闭环',
+    summary: '采集计划自动登记证券身份，新增真实已入库资产目录；行情数据详情区分未登记、未采集和系统错误，不再使用固定真实证券入口。',
+    modules: ['行情基础'],
+    stage: 'RUNTIME',
+    acceptanceRef: 'docs/acceptance/ACCEPTANCE_LOG.md · 2026-08-13 P1.9-D',
+    limitations: ['本地 Docker/MySQL 和 curl 已验；服务器部署与服务器 remote 浏览器尚未验收。'],
+  },
+  {
+    deliveredAt: '2026-08-13',
     title: 'P1.10-A 市场雷达与板块轮动研究',
     summary: '后端交付稳定板块身份、相对强弱、固定 5 日轮动、原子发布和只读 API；前端新增热力图、轮动矩阵、排行证据与板块历史详情。',
     modules: ['行情基础', '市场研究'],
@@ -139,11 +148,11 @@ const recentDeliveries: BuildDeliveryRecord[] = [
 
 const readyToUse = [
   { label: '市场雷达', path: '/market-research' },
+  { label: '行情数据资产', path: '/market-assets' },
   { label: '交易工作台', path: '/dashboard' },
   { label: '行情工作台', path: '/market-workspace' },
   { label: '板块与自动采集', path: '/market-segments' },
   { label: '持仓快照', path: '/position-snapshots' },
-  { label: '交易记录', path: '/journal' },
 ];
 
 const capabilities: BuildStatusNode[] = [
@@ -739,6 +748,33 @@ const capabilities: BuildStatusNode[] = [
             limitations: [],
             docLinks: [{ label: 'Market Data API', path: 'docs/api/MARKET_DATA_API.md' }],
           },
+        ],
+      },
+      {
+        id: 'market-data-assets',
+        title: '行情数据资产与采集闭环',
+        category: '行情基础',
+        priority: 'P1',
+        deliveryStatus: 'IN_PROGRESS',
+        validationStage: 'RUNTIME_VERIFIED',
+        productValue: '从采集计划进入真实已落库资产目录，查看 K 线、覆盖、质量和相关采集记录。',
+        deliveredContent: [
+          'availability / series / related-tasks 有界只读 API 与 K 线详情已实现',
+          '创建、修改、启用和执行采集计划时幂等登记最小证券身份',
+          '真实已入库资产目录、市场/关键词筛选与分级空态已实现',
+        ],
+        completionCriteria: ['后端与前端自动化门禁通过', 'remote 部署后可从目录进入真实资产详情'],
+        remainingWork: ['服务器部署与服务器 remote 浏览器验收'],
+        nextActions: ['部署后执行资产目录与详情最小冒烟'],
+        backendState: 'P1.9-A 详情 read model + P1.9-D 资产目录/证券登记自动化通过',
+        frontendState: '真实资产目录、K 线详情、质量、任务追溯和业务空态已实现',
+        lastUpdatedAt: '2026-08-13',
+        acceptanceRef: 'docs/acceptance/ACCEPTANCE_LOG.md · 2026-08-13 P1.9-D',
+        risks: ['旧行情记录若缺少证券目录元数据，资产目录先回退显示 canonical symbol；后续采集会幂等补齐最小身份'],
+        limitations: ['已完成本地 MySQL 8.4 运行验证，未声明服务器已部署。'],
+        docLinks: [
+          { label: 'Asset Center Design', path: 'docs/features/MARKET_DATA_ASSET_CENTER_DESIGN.md' },
+          { label: 'P1.9-D Contract', path: 'docs/development/tasks/MARKET-DATA-ASSET-INGESTION-LOOP-P19D-CONTRACT.md' },
         ],
       },
       {

@@ -33,6 +33,32 @@ export interface MarketAssetAvailability {
   combinations: MarketAssetCombination[];
 }
 
+export interface MarketAssetCatalogItem {
+  security: MarketAssetSecurity;
+  dailyBarCount: number;
+  minuteBarCount: number;
+  minuteIntervalCount: number;
+  firstDailyDate: string | null;
+  lastDailyDate: string | null;
+  firstMinuteTime: string | null;
+  lastMinuteTime: string | null;
+  latestFetchedAt: string | null;
+}
+
+export interface MarketAssetCatalogPage {
+  items: MarketAssetCatalogItem[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface MarketAssetCatalogFilter {
+  market?: string;
+  keyword?: string;
+  page?: number;
+  size?: number;
+}
+
 export type MarketAssetCoverageStatus = 'VERIFIED' | 'PARTIAL' | 'UNKNOWN' | string;
 
 export interface MarketAssetSeriesQuery {

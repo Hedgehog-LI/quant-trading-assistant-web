@@ -1,4 +1,4 @@
-import { Layout, Menu, Typography, Alert, Grid } from 'antd';
+import { Layout, Menu, Typography, Grid } from 'antd';
 import {
   DashboardOutlined,
   StarOutlined,
@@ -72,24 +72,12 @@ export function AppLayout() {
         />
       </Sider>
       <Layout style={{ minWidth: 0 }}>
-        <Header style={{ padding: isMobile ? '0 12px' : '0 24px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Header style={{ padding: isMobile ? '0 12px' : '0 24px', background: '#fff', display: 'flex', alignItems: 'center' }}>
           <Typography.Title level={4} style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
             量化交易辅助系统
           </Typography.Title>
-          {!isMobile && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              辅助记录 · 不自动交易
-            </Typography.Text>
-          )}
         </Header>
         <Content style={{ margin: isMobile ? 12 : 24, minWidth: 0, overflow: 'hidden' }}>
-          <Alert
-            type="info"
-            title="本系统只做交易辅助记录、风控计算和复盘，不自动交易，不连接券商，不保存真实密钥。"
-            style={{ marginBottom: 16 }}
-            showIcon
-            closable
-          />
           <Outlet />
         </Content>
       </Layout>

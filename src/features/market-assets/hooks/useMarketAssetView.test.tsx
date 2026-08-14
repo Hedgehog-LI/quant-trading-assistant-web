@@ -17,6 +17,7 @@ import { useMarketAssetView } from './useMarketAssetView';
 
 const mocks = vi.hoisted(() => ({
   getMarketAssetAvailability: vi.fn(),
+  getMarketAssetCatalog: vi.fn(),
   getMarketAssetSeries: vi.fn(),
   getMarketAssetRelatedTasks: vi.fn(),
 }));

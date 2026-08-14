@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAll } from '../../../shared/api/localStorageClient';
 import { saveSettings } from '../../settings/api/settingsApi';
 import type { MarketAssetSeries, MarketAssetSeriesParams } from '../model/types';
-import { useMarketAssetAvailability, useMarketAssetRelatedTasks, useMarketAssetSeries } from './useMarketAssetQuery';
+import { useMarketAssetAvailability, useMarketAssetCatalog, useMarketAssetRelatedTasks, useMarketAssetSeries } from './useMarketAssetQuery';
 
 const mocks = vi.hoisted(() => ({
   getMarketAssetAvailability: vi.fn(),
+  getMarketAssetCatalog: vi.fn(),
   getMarketAssetSeries: vi.fn(),
   getMarketAssetRelatedTasks: vi.fn(),
 }));
@@ -63,6 +64,16 @@ describe('useMarketAssetSeries', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mocks.getMarketAssetSeries).toHaveBeenCalledWith(SERIES_PARAMS);
     expect(result.current.data).toBe(fake);
+  });
+});
+
+describe('useMarketAssetCatalog', () => {
+  it('按筛选条件查询已入库资产', async () => {
+    mocks.getMarketAssetCatalog.mockResolvedValue({ items: [], total: 0, page: 1, size: 20 });
+    const filter = { market: 'HK', keyword: '2498', page: 1, size: 20 };
+    const { result } = renderHook(() => useMarketAssetCatalog(filter), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mocks.getMarketAssetCatalog).toHaveBeenCalledWith(filter);
   });
 });
 

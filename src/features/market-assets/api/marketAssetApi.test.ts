@@ -3,20 +3,21 @@ import { clearAll } from '../../../shared/api/localStorageClient';
 import { saveSettings } from '../../settings/api/settingsApi';
 import {
   getMarketAssetAvailability,
+  getMarketAssetCatalog,
   getMarketAssetRelatedTasks,
   getMarketAssetSeries,
 } from './marketAssetApi';
 
-describe('marketAssetApi mock（LOCAL_DEMO）', () => {
+describe('marketAssetApi mock', () => {
   beforeEach(() => {
     clearAll();
     saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
   });
 
   it('availability 返回证券与组合覆盖，不伪造采集成功（watermark/latestFetchedAt 为 null）', async () => {
-    const r = await getMarketAssetAvailability('SH.600519');
-    expect(r.security.canonicalSymbol).toBe('SH.600519');
-    expect(r.security.displayName).toBe('贵州茅台');
+    const r = await getMarketAssetAvailability('US.QTA');
+    expect(r.security.canonicalSymbol).toBe('US.QTA');
+    expect(r.security.displayName).toBe('QTA Sample');
     expect(r.combinations.length).toBeGreaterThan(0);
     for (const c of r.combinations) {
       expect(c.interval).toBeTruthy();
@@ -36,7 +37,7 @@ describe('marketAssetApi mock（LOCAL_DEMO）', () => {
 
   it('series 日 K：business-day 时间、覆盖率 UNKNOWN、不伪造水位', async () => {
     const r = await getMarketAssetSeries({
-      canonicalSymbol: 'SH.600519',
+      canonicalSymbol: 'US.QTA',
       interval: '1D',
       from: '2026-07-01',
       to: '2026-07-31',
@@ -61,7 +62,7 @@ describe('marketAssetApi mock（LOCAL_DEMO）', () => {
 
   it('series 分钟 K：时间带 +08:00 offset，qualityStatus=VALID', async () => {
     const r = await getMarketAssetSeries({
-      canonicalSymbol: 'SH.600519',
+      canonicalSymbol: 'US.QTA',
       interval: '5M',
       from: '2026-07-17T09:30:00+08:00',
       to: '2026-07-17T15:00:00+08:00',
@@ -75,7 +76,7 @@ describe('marketAssetApi mock（LOCAL_DEMO）', () => {
 
   it('series 超范围时截断为 200 条并标记 truncated', async () => {
     const r = await getMarketAssetSeries({
-      canonicalSymbol: 'SH.600519',
+      canonicalSymbol: 'US.QTA',
       interval: '1D',
       from: '2015-01-01',
       to: '2030-12-31',
@@ -100,12 +101,16 @@ describe('marketAssetApi mock（LOCAL_DEMO）', () => {
     ).rejects.toThrow('证券不存在');
   });
 
-  it('related-tasks 只给出一条显式 LOCAL_DEMO 计划，不伪造真实采集记录', async () => {
-    const r = await getMarketAssetRelatedTasks('SH.600519');
-    expect(r.plans).toHaveLength(1);
-    expect(r.plans[0].name).toContain('LOCAL_DEMO');
-    expect(r.plans[0].status).toBe('DISABLED');
-    expect(r.plans[0].errorMessage).toContain('演示数据');
+  it('catalog 返回已入库的虚构样例证券并支持筛选', async () => {
+    const r = await getMarketAssetCatalog({ market: 'US', keyword: 'qta' });
+    expect(r.total).toBe(1);
+    expect(r.items[0].security.canonicalSymbol).toBe('US.QTA');
+    expect(r.items[0].dailyBarCount).toBeGreaterThan(0);
+  });
+
+  it('related-tasks 不伪造采集计划或记录', async () => {
+    const r = await getMarketAssetRelatedTasks('US.QTA');
+    expect(r.plans).toHaveLength(0);
     expect(r.runs).toHaveLength(0);
   });
 });
