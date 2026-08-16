@@ -118,6 +118,7 @@ describe('buildStatusSnapshot 数据完整性', () => {
       '/market-workspace',
       '/market-segments',
       '/market-research',
+      '/data-foundation',
       '/market-assets',
       '/settings',
     ];

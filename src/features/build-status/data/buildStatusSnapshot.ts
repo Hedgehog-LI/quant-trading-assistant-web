@@ -23,6 +23,20 @@ const DEFAULT_ACCEPTANCE_V011 = 'docs/acceptance/ACCEPTANCE_LOG.md · v0.1.1 基
 const recentDeliveries: BuildDeliveryRecord[] = [
   {
     deliveredAt: '2026-08-16',
+    title: 'QTA V2-1 数据中心（A 股历史数据底座）',
+    summary: '新增 /data-foundation 数据中心：历史回补任务创建/断点续跑/失败分片重试，数据集版本与发布门禁、13 族质量结果与覆盖率、五类 CSV 幂等导入通道；仅消费真实后端数据。',
+    modules: ['市场研究', '行情基础'],
+    stage: 'RUNTIME',
+    backendCommit: '0c805ce',
+    frontendCommit: '601be32',
+    acceptanceRef: 'docs/development/DATA_FOUNDATION_FRONTEND_IMPLEMENTATION.md（候选，待 Codex 独立验收）',
+    limitations: [
+      '本地 Docker 真实后端运行时链路验证通过（含 TENCENT_PUBLIC 极小真实回补）；候选未独立验收、未 push。',
+      '全量真实回补未执行；官方资金流 BLOCKED（无凭据）；服务器部署 NOT_DEPLOYED。',
+    ],
+  },
+  {
+    deliveredAt: '2026-08-16',
     title: 'QTA V2 MR-1B 市场全景研究终端',
     summary: '/market-research 重写为市场全景研究终端：消费 MR-1A overview API，交付基准趋势与回撤、流动性与交易活跃度、市场广度、行业成交占比迁移与数据质量五区块，含 NO_DATA/DEGRADED/阻断/失败全状态处理；仅消费真实后端数据，mock 模式提示切换后端模式。',
     modules: ['市场研究'],
@@ -137,8 +151,8 @@ const recentDeliveries: BuildDeliveryRecord[] = [
 ];
 
 const readyToUse = [
+  { label: '数据中心', path: '/data-foundation' },
   { label: '市场全景', path: '/market-research' },
-  { label: '行情数据资产', path: '/market-assets' },
   { label: '交易工作台', path: '/dashboard' },
   { label: '行情工作台', path: '/market-workspace' },
   { label: '板块与自动采集', path: '/market-segments' },
@@ -1074,6 +1088,37 @@ const capabilities: BuildStatusNode[] = [
         risks: ['dataScope=SAMPLE 且 0.90 覆盖门禁下真实数据常态 DEGRADED，属诚实门禁而非页面故障'],
         limitations: ['样本域 Top-150∪基准非全市场；官方资金流 UNAVAILABLE；服务器未部署；前端候选 commit hash 待独立验收后在交付收口补录。'],
         docLinks: [{ label: 'MR-1B 实现与验收记录', path: 'docs/development/MARKET_RESEARCH_MR1B_FRONTEND_IMPLEMENTATION.md' }],
+      },
+      {
+        id: 'data-foundation',
+        title: '数据中心·历史数据底座（QTA V2-1）',
+        category: '行情基础',
+        priority: 'P1',
+        deliveryStatus: 'DELIVERED',
+        validationStage: 'RUNTIME_VERIFIED',
+        productValue: '把 A 股历史数据变成可回补、可验证、可追溯的资产：回补任务断点续跑、13 族质量门禁与版本发布、无凭据 CSV 导入，为 MR-2 提供真实数据基础。',
+        deliveredContent: [
+          '/data-foundation 数据中心：回补任务（创建表单 2021 边界/chunkSize 1-500、列表、分片详情、启动/暂停/重试失败分片）',
+          '数据集与版本：版本状态机、当前发布版本、质量检查/发布（按版本状态禁用）、13 族质量结果与覆盖率',
+          'CSV/快照导入：五类 schema 上传、批次计数、行级错误报告；相同内容重复导入幂等',
+          '全状态纪律：null 显示 --；remote 失败不回退；mock 模式提示切换后端不伪造数据',
+        ],
+        completionCriteria: [
+          '前端 typecheck / lint / test（441 tests）/ build 全绿',
+          'Docker 真实后端 remote 模式浏览器验收（真实回补任务/版本发布/导入批次渲染）',
+          '后端 627 tests + 架构门禁 errors=0（REVIEW-G1）',
+        ],
+        remainingWork: ['Codex 独立验收后合并双仓分支', '全量真实回补执行（2021 起全 A）', '服务器部署验收'],
+        nextActions: ['等待独立验收，期间不 push 不合并'],
+        backendState: 'mdf_* V24 + 回补引擎 + 质量发布门禁 + 18 端点（候选 commit 0c805ce）',
+        frontendState: '数据中心三 Tab + 全状态处理已实现（候选 commit 601be32），Docker 真实后端浏览器验收通过',
+        lastUpdatedAt: '2026-08-16',
+        backendCommit: '0c805ce',
+        frontendCommit: '601be32',
+        acceptanceRef: 'docs/development/DATA_FOUNDATION_FRONTEND_IMPLEMENTATION.md',
+        risks: ['公共源（SINA/TENCENT）为实验性来源，无 SLA；生产化需另立 ADR'],
+        limitations: ['官方资金流 BLOCKED（TUSHARE 无凭据）；全量回补未执行；服务器未部署。'],
+        docLinks: [{ label: 'V2-1 前端实现记录', path: 'docs/development/DATA_FOUNDATION_FRONTEND_IMPLEMENTATION.md' }],
       },
       {
         id: 'market-movement-dashboard',
