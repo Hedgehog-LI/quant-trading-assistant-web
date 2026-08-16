@@ -1,382 +1,180 @@
+/**
+ * 市场全景（MR-1B，/market-research 正式改版）。
+ *
+ * 消费 MR-1A 正式 API GET /api/v1/market-research/overview，按机构化研究顺序呈现五类核心证据：
+ * 基准趋势与回撤 → 成交活跃度/价格冲击代理 → 市场广度 → 行业成交占比迁移 → 数据质量。
+ * 旧"市场雷达"结构已被本页替换；板块详情路由保留（market-research-sector.tsx）。
+ * 状态纪律：loading/error/NO_DATA/DEGRADED 全覆盖；null 显示 '--' 或断点，禁止 0 冒充；
+ * remote 失败不回退 mock；行业迁移阻断时渲染明确空态而非伪图。
+ */
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
 import {
   Alert,
   Button,
   Card,
   Col,
   Empty,
-  Flex,
-  Progress,
   Row,
-  Segmented,
-  Select,
+  Skeleton,
   Space,
-  Statistic,
-  Table,
-  Tag,
   Typography,
-  message,
-  type TableColumnsType,
 } from 'antd';
-import { ArrowLeftOutlined, ReloadOutlined, SyncOutlined } from '@ant-design/icons';
-import { MarketHeatmap } from '../features/market-research/components/MarketHeatmap';
-import { RotationMatrix } from '../features/market-research/components/RotationMatrix';
-import { SectorHistoryChart } from '../features/market-research/components/SectorHistoryChart';
-import {
-  calculateMarketResearch,
-  getMarketResearchRadar,
-  getMarketResearchReadiness,
-  getMarketResearchSectorDetail,
-} from '../features/market-research/api/marketResearchApi';
-import type {
-  MarketResearchSector,
-  ResearchMarket,
-  RotationState,
-} from '../features/market-research/model/types';
-import { getSettings } from '../features/settings/api/settingsApi';
-import './market-research.css';
+import { ReloadOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import { ActivityLiquidityChart } from '../features/market-overview/components/ActivityLiquidityChart';
+import { BenchmarkTrendChart } from '../features/market-overview/components/BenchmarkTrendChart';
+import { BreadthChart } from '../features/market-overview/components/BreadthChart';
+import { IndustryMigrationChart } from '../features/market-overview/components/IndustryMigrationChart';
+import { OverviewContextBar } from '../features/market-overview/components/OverviewContextBar';
+import { QualityPanel } from '../features/market-overview/components/QualityPanel';
+import { useMarketOverview } from '../features/market-overview/hooks/useMarketOverview';
+import type { OverviewMarket } from '../features/market-overview/api/marketOverviewApi';
+import './market-overview.css';
 
 const { Title, Text } = Typography;
-const WINDOWS = [1, 5, 10, 20, 50];
-const STATE_META: Record<RotationState, { label: string; color: string }> = {
-  LEADING: { label: '领先', color: 'red' },
-  IMPROVING: { label: '改善', color: 'blue' },
-  WEAKENING: { label: '转弱', color: 'orange' },
-  LAGGING: { label: '落后', color: 'default' },
-  INSUFFICIENT_DATA: { label: '样本不足', color: 'default' },
-};
 
-function percent(value: number | null | undefined, signed = false): string {
-  if (value == null) return '--';
-  return `${signed && value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
-}
-
-function timeText(value: string | null | undefined): string {
-  if (!value) return '--';
-  return value.replace('T', ' ').slice(0, 19);
-}
-
-function ErrorState({ error, retry, showOneDay }: {
-  error: unknown;
-  retry: () => void;
-  showOneDay?: () => void;
-}) {
-  return (
-    <Alert
-      type="warning"
-      showIcon
-      title="暂无可用研究结果"
-      description={error instanceof Error ? error.message : '请先完成板块收盘排行采集，再生成研究结果。'}
-      action={(
-        <Space wrap>
-          {showOneDay && <Button type="primary" onClick={showOneDay}>查看1日强度</Button>}
-          <Button icon={<ReloadOutlined />} onClick={retry}>重试</Button>
-        </Space>
-      )}
-    />
-  );
-}
-
-function ResearchScopeBar({ market, windowDays }: { market: ResearchMarket; windowDays: number }) {
-  const readiness = useQuery({
-    queryKey: ['market-research', 'readiness', market, getSettings().apiMode],
-    queryFn: () => getMarketResearchReadiness(market),
-  });
-  if (!readiness.data) return null;
-  const data = readiness.data;
-  return (
-    <div className="research-scope-bar">
-      <Space wrap size={[8, 6]}>
-        <Tag color={data.qualityStatus === 'OK' ? 'green' : 'orange'}>{data.qualityStatus}</Tag>
-        <Text>{data.scopeDescription}</Text>
-        <Text type="secondary">{windowDays === 1 ? '当日横截面强度 · 轮动需至少5日' : `窗口 ${windowDays} 日强度 + 5 日动量`}</Text>
-        <Text type="secondary">样本 {data.actualItemCount ?? 0}/{data.expectedItemCount ?? '--'}</Text>
-        <Text type="secondary">来源时间 {timeText(data.sourceQuoteTime)}</Text>
-      </Space>
-    </div>
-  );
-}
-
-function RadarSummary({ sectors, oneDay }: { sectors: MarketResearchSector[]; oneDay: boolean }) {
-  if (oneDay) {
-    const rising = sectors.filter((sector) => (sector.sectorReturn ?? 0) > 0).length;
-    const falling = sectors.filter((sector) => (sector.sectorReturn ?? 0) < 0).length;
-    const strong = sectors.filter((sector) => (sector.rsRankPercentile ?? 0) >= 0.8).length;
-    const weak = sectors.filter((sector) => (sector.rsRankPercentile ?? 1) <= 0.2).length;
-    return (
-      <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}><Statistic title="上涨板块" value={rising} styles={{ content: { color: '#b42318' } }} /></Col>
-        <Col xs={12} md={6}><Statistic title="下跌板块" value={falling} styles={{ content: { color: '#027a48' } }} /></Col>
-        <Col xs={12} md={6}><Statistic title="强度前20%" value={strong} styles={{ content: { color: '#b42318' } }} /></Col>
-        <Col xs={12} md={6}><Statistic title="强度后20%" value={weak} styles={{ content: { color: '#475467' } }} /></Col>
-      </Row>
-    );
-  }
-  const count = (state: RotationState) => sectors.filter((sector) => sector.rotationState === state).length;
-  return (
-    <Row gutter={[12, 12]}>
-      <Col xs={12} md={6}><Statistic title="领先" value={count('LEADING')} styles={{ content: { color: '#b42318' } }} /></Col>
-      <Col xs={12} md={6}><Statistic title="改善" value={count('IMPROVING')} styles={{ content: { color: '#175cd3' } }} /></Col>
-      <Col xs={12} md={6}><Statistic title="转弱" value={count('WEAKENING')} styles={{ content: { color: '#b54708' } }} /></Col>
-      <Col xs={12} md={6}><Statistic title="落后" value={count('LAGGING')} styles={{ content: { color: '#475467' } }} /></Col>
-    </Row>
-  );
-}
-
-function SectorEvidence({ sector }: { sector: MarketResearchSector }) {
-  return (
-    <Space orientation="vertical" size={0} className="sector-evidence">
-      {sector.evidence.slice(0, 2).map((item) => <Text key={item}>{item}</Text>)}
-      <Text type="secondary">领涨样本：{sector.leadingName ?? '--'} {sector.leadingSymbol ?? ''}</Text>
-    </Space>
-  );
-}
-
-function sectorColumns(
-  onOpen: (sector: MarketResearchSector) => void,
-  oneDay: boolean,
-): TableColumnsType<MarketResearchSector> {
-  const identityColumns: TableColumnsType<MarketResearchSector> = [
-    { title: oneDay ? '源排名' : '排名', dataIndex: 'currentRank', width: 74, sorter: (a, b) => (a.currentRank ?? 999) - (b.currentRank ?? 999) },
-    { title: '板块', dataIndex: 'sectorName', width: 150, render: (value, row) => <Button type="link" onClick={() => onOpen(row)}>{value}</Button> },
-  ];
-  if (oneDay) {
-    return [
-      ...identityColumns,
-      {
-        title: '当日涨跌', dataIndex: 'sectorReturn', width: 110,
-        sorter: (a, b) => (a.sectorReturn ?? -1) - (b.sectorReturn ?? -1),
-        render: (value: number | null) => <Text className={(value ?? 0) >= 0 ? 'research-up' : 'research-down'}>{percent(value, true)}</Text>,
-      },
-      {
-        title: '相对样本均值', dataIndex: 'relativeReturn', width: 130,
-        sorter: (a, b) => (a.relativeReturn ?? -1) - (b.relativeReturn ?? -1),
-        render: (value: number | null) => percent(value, true),
-      },
-      {
-        title: '强度百分位', dataIndex: 'rsRankPercentile', width: 140,
-        sorter: (a, b) => (a.rsRankPercentile ?? -1) - (b.rsRankPercentile ?? -1),
-        render: (value: number | null) => <Progress percent={(value ?? 0) * 100} size="small" format={() => percent(value)} />,
-      },
-      { title: '领涨样本', width: 180, render: (_, row) => `${row.leadingName ?? '--'} ${row.leadingSymbol ?? ''}` },
-      { title: '当日证据', render: (_, row) => <SectorEvidence sector={row} /> },
-    ];
-  }
-  return [
-    ...identityColumns,
-    {
-      title: '状态', dataIndex: 'rotationState', width: 92,
-      filters: Object.entries(STATE_META).map(([value, meta]) => ({ text: meta.label, value })),
-      onFilter: (value, row) => row.rotationState === value,
-      render: (value: RotationState) => <Tag color={STATE_META[value].color}>{STATE_META[value].label}</Tag>,
-    },
-    {
-      title: 'RS 百分位', dataIndex: 'rsRankPercentile', width: 130,
-      sorter: (a, b) => (a.rsRankPercentile ?? -1) - (b.rsRankPercentile ?? -1),
-      render: (value: number | null) => <Progress percent={(value ?? 0) * 100} size="small" format={() => percent(value)} />,
-    },
-    {
-      title: '短期变化', dataIndex: 'rankPercentileChange', width: 100,
-      sorter: (a, b) => (a.rankPercentileChange ?? -1) - (b.rankPercentileChange ?? -1),
-      render: (value: number | null) => <Text className={(value ?? 0) >= 0 ? 'research-up' : 'research-down'}>{percent(value, true)}</Text>,
-    },
-    {
-      title: '头部占用', dataIndex: 'topBucketOccupancyRate', width: 100,
-      sorter: (a, b) => (a.topBucketOccupancyRate ?? -1) - (b.topBucketOccupancyRate ?? -1),
-      render: (value: number | null) => percent(value),
-    },
-    {
-      title: '连续性', width: 96,
-      render: (_, row) => (row.consecutiveLeadingDays ?? 0) > 0
-        ? `领 ${row.consecutiveLeadingDays} 日`
-        : (row.consecutiveLaggingDays ?? 0) > 0 ? `弱 ${row.consecutiveLaggingDays} 日` : '--',
-    },
-    { title: '证据', render: (_, row) => <SectorEvidence sector={row} /> },
-  ];
-}
-
-function OneDayStrengthLadder({ sectors, onOpen }: {
-  sectors: MarketResearchSector[];
-  onOpen: (sector: MarketResearchSector) => void;
-}) {
-  const ordered = sectors.slice().sort((left, right) =>
-    (right.rsRankPercentile ?? -1) - (left.rsRankPercentile ?? -1));
-  const groupSize = Math.min(6, Math.max(1, Math.floor(ordered.length / 2)));
-  const groups = [
-    { title: '当日强势', items: ordered.slice(0, groupSize), tone: 'up' },
-    { title: '当日弱势', items: ordered.slice(-groupSize).reverse(), tone: 'down' },
-  ];
-  return (
-    <div className="one-day-ladder" data-testid="one-day-strength-ladder">
-      {groups.map((group) => (
-        <section key={group.title}>
-          <Text strong>{group.title}</Text>
-          <div className="one-day-ladder__list">
-            {group.items.map((sector) => (
-              <button type="button" key={sector.sectorId} onClick={() => onOpen(sector)}>
-                <span>{sector.sectorName}</span>
-                <strong className={group.tone === 'up' ? 'research-up' : 'research-down'}>
-                  {percent(sector.sectorReturn, true)}
-                </strong>
-                <small>强度 {percent(sector.rsRankPercentile)}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+/** 默认窗口：最近 90 个自然日（覆盖一个季度；无数据时用户调整范围）。 */
+function defaultRange(): { start: string; end: string } {
+  const end = dayjs();
+  return { start: end.subtract(89, 'day').format('YYYY-MM-DD'), end: end.format('YYYY-MM-DD') };
 }
 
 export function MarketResearchPage() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [market, setMarket] = useState<ResearchMarket>(() => (searchParams.get('market') as ResearchMarket) || 'CN');
-  const [windowDays, setWindowDays] = useState(() => Number(searchParams.get('window')) || 1);
-  const mode = getSettings().apiMode;
-  const radar = useQuery({
-    queryKey: ['market-research', 'radar', market, windowDays, mode],
-    queryFn: () => getMarketResearchRadar(market, windowDays),
-    retry: false,
-  });
-  const calculation = useMutation({
-    mutationFn: () => calculateMarketResearch(market, windowDays),
-    onSuccess: async (result) => {
-      message.success(result.reused ? '已复用同一数据批次的研究结果' : '研究结果已生成');
-      await queryClient.invalidateQueries({ queryKey: ['market-research'] });
-    },
-    onError: (error) => message.error(error instanceof Error ? error.message : '生成研究结果失败'),
-  });
-  const sectors = radar.data?.sectors ?? [];
-  const oneDay = windowDays === 1;
-  const openSector = (sector: MarketResearchSector) => {
-    navigate(`/market-research/sectors/${sector.sectorId}?market=${market}&window=${windowDays}`);
+  const queryClient = useQueryClient();
+  const fallback = defaultRange();
+  const start = searchParams.get('start') ?? fallback.start;
+  const end = searchParams.get('end') ?? fallback.end;
+  const market: OverviewMarket = 'CN';
+  const [pendingRange, setPendingRange] = useState<{ start: string; end: string }>({ start, end });
+
+  const overview = useMarketOverview(market, start, end);
+  const data = overview.data;
+  const metadata = data?.metadata ?? null;
+  const loading = overview.isLoading;
+  const noData = metadata?.qualityStatus === 'NO_DATA';
+
+  const commitRange = (nextStart: string, nextEnd: string) => {
+    setPendingRange({ start: nextStart, end: nextEnd });
+    setSearchParams({ start: nextStart, end: nextEnd });
   };
-  const changeScope = (nextMarket: ResearchMarket, nextWindow: number) => {
-    setMarket(nextMarket);
-    setWindowDays(nextWindow);
-    setSearchParams({ market: nextMarket, window: String(nextWindow) });
+
+  const refresh = async () => {
+    await overview.refetch();
   };
+
+  const invalidateAndRefresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['market-overview'] });
+  };
+
+  const migrationBlocked = data?.quality.qualityFindings.some(
+    (finding) => finding.code === 'INDUSTRY_MIGRATION_BLOCKED',
+  ) ?? false;
+  const blockedFinding = data?.quality.qualityFindings.find(
+    (finding) => finding.code === 'INDUSTRY_MIGRATION_BLOCKED',
+  );
 
   return (
-    <div className="market-research-page">
-      {mode === 'mock' && <div className="research-demo-watermark" aria-hidden="true">LOCAL_DEMO</div>}
-      <Flex justify="space-between" align="flex-start" wrap gap={12} className="research-page-header">
-        <div>
-          <Title level={3}>市场雷达</Title>
-          <Text type="secondary">{oneDay ? '先看当天板块强弱和市场宽度；积累5个交易日后再判断轮动。' : '先看板块轮动方向，再进入板块核对证据。'}</Text>
-        </div>
-        <Space wrap>
-          <Segmented<ResearchMarket> value={market} options={['CN', 'HK', 'US']} onChange={(value) => changeScope(value, windowDays)} />
-          <Select value={windowDays} style={{ width: 118 }} options={WINDOWS.map((value) => ({ value, label: `${value} 日强度` }))}
-            onChange={(value) => changeScope(market, value)} />
-          <Button icon={<ReloadOutlined />} onClick={() => void radar.refetch()}>刷新</Button>
-          {!oneDay && <Button type="primary" icon={<SyncOutlined />} loading={calculation.isPending} onClick={() => calculation.mutate()}>生成结果</Button>}
-        </Space>
-      </Flex>
+    <div className="market-overview-page">
+      <div className="overview-page-header">
+        <Title level={3}>市场全景</Title>
+        <Text type="secondary">
+          趋势与回撤 → 成交活跃度 → 市场广度 → 行业交易注意力迁移；自上而下核对证据后再下结论。
+        </Text>
+      </div>
 
-      {mode === 'mock' && <Alert type="warning" showIcon title="LOCAL_DEMO 演示研究数据" description="使用虚构板块和证券，不代表真实市场；切换后端模式后只展示数据库已发布结果。" />}
-      <ResearchScopeBar market={market} windowDays={windowDays} />
+      <OverviewContextBar
+        start={pendingRange.start}
+        end={pendingRange.end}
+        onSearch={commitRange}
+        onRefresh={() => void (overview.isFetching ? undefined : refresh())}
+        refreshing={overview.isFetching}
+        metadata={metadata}
+        loading={loading}
+      />
 
-      {radar.isError && <ErrorState error={radar.error} retry={() => void radar.refetch()}
-        showOneDay={oneDay ? undefined : () => changeScope(market, 1)} />}
-      {!radar.isError && (
+      {overview.isError && (
+        <Alert
+          type="error" showIcon
+          title="市场全景数据加载失败"
+          description={overview.error instanceof Error ? overview.error.message : '请检查后端连接后重试。'}
+          action={<Button icon={<ReloadOutlined />} onClick={() => void invalidateAndRefresh()}>重试</Button>}
+          style={{ marginBottom: 14 }}
+        />
+      )}
+
+      {loading && (
+        <Card><Skeleton active paragraph={{ rows: 10 }} /></Card>
+      )}
+
+      {!loading && overview.isError && (
+        <Card>
+          <Empty description="市场全景暂不可用：请确认后端已启动并重试。" />
+        </Card>
+      )}
+
+      {!loading && !overview.isError && noData && (
+        <Card>
+          <Empty
+            data-testid="overview-no-data"
+            description="窗口内没有基准指数日 K（NO_DATA）：无法推导交易日，未渲染任何图表。请调整日期范围到已有数据的区间。"
+          />
+        </Card>
+      )}
+
+      {!loading && !overview.isError && data && !noData && (
         <>
-          <Card size="small" loading={radar.isLoading} className="research-summary-card">
-            <RadarSummary sectors={sectors} oneDay={oneDay} />
+          <Card
+            className="overview-section"
+            title={<Space size={8}>基准趋势与回撤<span className="overview-section__hint">{metadata?.benchmarkSymbol} · MA20/MA60 与成交额、回撤分面共享时间轴</span></Space>}
+            extra={<Text type="secondary">null 指标为断点</Text>}
+          >
+            <BenchmarkTrendChart series={data.benchmarkSeries} />
           </Card>
+
           <Row gutter={[16, 16]}>
-            <Col xs={24} xl={11}>
-              <Card title="板块热力" extra={<Text type="secondary">等面积 · 颜色={oneDay ? '当日相对收益' : '窗口相对收益'}</Text>} className="research-panel">
-                <MarketHeatmap sectors={sectors} onSelect={openSector} />
+            <Col xs={24} xl={12}>
+              <Card
+                className="overview-section"
+                title={<Space size={8}>流动性与交易活跃度<span className="overview-section__hint">样本域成交额 · 20/60 日中位 · 活跃度比值 · 成交扩散</span></Space>}
+              >
+                <ActivityLiquidityChart activity={data.activitySeries} liquidityDays={data.liquidityProxySeries.days} />
               </Card>
             </Col>
-            <Col xs={24} xl={13}>
-              <Card title={oneDay ? '当日强弱梯队' : '轮动矩阵'}
-                extra={<Text type="secondary">{oneDay ? '仅表达最新收盘横截面位置' : '横轴=中期强度 · 纵轴=短期位次变化'}</Text>}
-                className="research-panel">
-                {oneDay
-                  ? <OneDayStrengthLadder sectors={sectors} onOpen={openSector} />
-                  : <RotationMatrix sectors={sectors} onSelect={openSector} />}
+            <Col xs={24} xl={12}>
+              <Card
+                className="overview-section"
+                title={<Space size={8}>市场广度<span className="overview-section__hint">上涨占比 · 涨跌家数 · A/D 线 · 高于 MA20 占比</span></Space>}
+              >
+                <BreadthChart series={data.breadthSeries} />
               </Card>
             </Col>
           </Row>
-          <Card title="板块排行与证据" className="research-table-card"
-            extra={<Text type="secondary">截至 {radar.data?.asOfDate ?? '--'} · 来源 {timeText(radar.data?.sourceQuoteTime)}</Text>}>
-            {sectors.length === 0 ? <Empty description="当前发布批次没有板块结果" /> : (
-              <Table rowKey="sectorId" columns={sectorColumns(openSector, oneDay)} dataSource={sectors}
-                pagination={{ pageSize: 12, showSizeChanger: false }} scroll={{ x: 1050 }} size="small" />
+
+          <Card
+            className="overview-section"
+            title={<Space size={8}>行业成交占比迁移<span className="overview-section__hint">每日 Top-8 + 其他 · 交易注意力迁移，不是资金净流入</span></Space>}
+          >
+            {migrationBlocked ? (
+              <Empty
+                data-testid="overview-migration-blocked"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={`行业成交占比迁移已阻断（INDUSTRY_MIGRATION_BLOCKED）：${blockedFinding?.message ?? '行业映射覆盖严重不足'}；不渲染行业图。`}
+              />
+            ) : data.industryTurnoverMigration.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="窗口内没有行业成交占比数据" />
+            ) : (
+              <IndustryMigrationChart rows={data.industryTurnoverMigration} />
             )}
           </Card>
-          {radar.data?.flowMetricNature === 'UNAVAILABLE' && (
-            <Alert type="info" showIcon title="当前没有可验证的真实资金流口径"
-              description={oneDay
-                ? '本页只展示最新收盘的横截面强弱，不把成交活跃度、持续性或缺失值包装成资金流。'
-                : '本页使用相对强弱和排行持续性，不把成交活跃度或缺失值包装成资金流。'} />
-          )}
+
+          <Card className="overview-section" title="数据质量与可解释状态">
+            <QualityPanel quality={data.quality} qualityStatus={metadata?.qualityStatus ?? 'OK'} />
+          </Card>
         </>
       )}
-    </div>
-  );
-}
-
-export function MarketResearchSectorPage() {
-  const navigate = useNavigate();
-  const { sectorId } = useParams();
-  const [params] = useSearchParams();
-  const market = (params.get('market') as ResearchMarket) || 'CN';
-  const windowDays = Number(params.get('window')) || 1;
-  const id = Number(sectorId);
-  const detail = useQuery({
-    queryKey: ['market-research', 'sector', id, market, windowDays, getSettings().apiMode],
-    queryFn: () => getMarketResearchSectorDetail(id, market, windowDays, 50),
-    enabled: Number.isFinite(id),
-    retry: false,
-  });
-  const data = detail.data;
-
-  return (
-    <div className="market-research-page">
-      {getSettings().apiMode === 'mock' && <div className="research-demo-watermark" aria-hidden="true">LOCAL_DEMO</div>}
-      <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-        <Button type="text" icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(`/market-research?market=${market}&window=${windowDays}`)}>返回市场雷达</Button>
-        {detail.isError && <ErrorState error={detail.error} retry={() => void detail.refetch()} />}
-        <Card loading={detail.isLoading}>
-          {data && (
-            <>
-              <Flex justify="space-between" align="flex-start" wrap gap={12}>
-                <div>
-                  <Title level={3}>{data.sectorName}</Title>
-                  <Space wrap>
-                    <Tag>{data.market}</Tag>
-                    <Tag color={data.qualityStatus === 'OK' ? 'green' : 'orange'}>{data.qualityStatus}</Tag>
-                    <Text type="secondary">{data.scopeDescription}</Text>
-                  </Space>
-                </div>
-                <Space wrap>
-                  <Text>{data.windowDays === 1 ? '当日强度' : `窗口 ${data.windowDays} 日`}</Text>
-                  <Text>覆盖 {percent(data.coverageRate)}</Text>
-                  <Text>来源 {timeText(data.sourceQuoteTime)}</Text>
-                </Space>
-              </Flex>
-              <Row gutter={[12, 12]} className="sector-detail-stats">
-                <Col xs={12} md={6}><Statistic title="领先样本" value={data.leadingName ?? '--'} /></Col>
-                <Col xs={12} md={6}><Statistic title="领先代码" value={data.leadingSymbol ?? '--'} /></Col>
-                <Col xs={12} md={6}><Statistic title="跟踪证券" value={data.trackingSymbol ?? '--'} /></Col>
-                <Col xs={12} md={6}><Statistic title="有效样本" value={`${data.actualItemCount}/${data.expectedItemCount}`} /></Col>
-              </Row>
-            </>
-          )}
-        </Card>
-        <Card title={windowDays === 1 ? '每日强度历史' : '相对强弱历史'} extra={<Text type="secondary">百分位越高表示在同一排行样本内相对更强</Text>}>
-          <SectorHistoryChart points={data?.history ?? []} oneDay={windowDays === 1} />
-        </Card>
-        <Alert type="info" showIcon title="当前详情只展示已验证证据" description="板块成交活跃度、真实资金流和板块内候选扫描尚未接入；这里不会用空数据生成结论。" />
-      </Space>
     </div>
   );
 }

@@ -22,6 +22,18 @@ const DEFAULT_ACCEPTANCE_V011 = 'docs/acceptance/ACCEPTANCE_LOG.md · v0.1.1 基
 
 const recentDeliveries: BuildDeliveryRecord[] = [
   {
+    deliveredAt: '2026-08-16',
+    title: 'QTA V2 MR-1B 市场全景研究终端',
+    summary: '/market-research 重写为市场全景研究终端：消费 MR-1A overview API，交付基准趋势与回撤、流动性与交易活跃度、市场广度、行业成交占比迁移与数据质量五区块，含 NO_DATA/DEGRADED/阻断/失败全状态处理，remote 失败不回退 mock。',
+    modules: ['市场研究'],
+    stage: 'RUNTIME',
+    acceptanceRef: 'docs/development/MARKET_RESEARCH_MR1B_FRONTEND_IMPLEMENTATION.md',
+    limitations: [
+      '本地 Docker 真实后端 + 浏览器验收通过；候选 commit 待 Codex 独立验收，双仓任务分支未合并 main。',
+      '服务器部署 NOT_DEPLOYED；dataScope=SAMPLE（Top-150∪基准），官方资金流 UNAVAILABLE。',
+    ],
+  },
+  {
     deliveredAt: '2026-08-13',
     title: 'P1.9-D 行情采集与资产查看闭环',
     summary: '采集计划自动登记证券身份，新增真实已入库资产目录；行情数据详情区分未登记、未采集和系统错误，不再使用固定真实证券入口。',
@@ -122,32 +134,10 @@ const recentDeliveries: BuildDeliveryRecord[] = [
     acceptanceRef: 'docs/acceptance/ACCEPTANCE_LOG.md · 2026-07-18 P1.5',
     limitations: ['后续板块相对强弱、资金趋势与异动提醒不属于 P1.5 原始数据闭环。'],
   },
-  {
-    deliveredAt: '2026-07-17',
-    title: 'P1.4a 精确证券代码验证',
-    summary: '采集计划支持 A/H/US 市场精确代码，通过 LongPort Static Info + Quote 展示名称、价格并确认加入，验证不落库。',
-    modules: ['行情基础'],
-    stage: 'RUNTIME',
-    backendCommit: '3e69c70',
-    frontendCommit: '718d128',
-    acceptanceRef: 'docs/acceptance/ACCEPTANCE_LOG.md · 2026-07-17 P1.4a',
-    limitations: ['港美股分钟采集的交易日历、时区与 scheduler 未闭环；精确验证成功不等于分钟任务已支持。'],
-  },
-  {
-    deliveredAt: '2026-07-17',
-    title: 'P1.2 行情工作台与采集执行引擎',
-    summary: '行情工作台、采集计划 CRUD 与手工执行、A 股盘中定时采集、1M/5M/15M/30M/60M 分钟 K 落库与水位闭环，真实 SH.601318 单日 5M 外联通过。',
-    modules: ['行情基础'],
-    stage: 'RUNTIME',
-    backendCommit: 'ad6964d',
-    frontendCommit: '718d128',
-    acceptanceRef: 'docs/development/MARKET_DATA_EXECUTION_ENGINE_DELIVERY_2026-07-17.md',
-    limitations: ['港美股盘中自动任务在时区/日历闭环前明确拒绝；Docker MySQL 与浏览器验证以验收日志为准。'],
-  },
 ];
 
 const readyToUse = [
-  { label: '市场雷达', path: '/market-research' },
+  { label: '市场全景', path: '/market-research' },
   { label: '行情数据资产', path: '/market-assets' },
   { label: '交易工作台', path: '/dashboard' },
   { label: '行情工作台', path: '/market-workspace' },
@@ -1055,6 +1045,37 @@ const capabilities: BuildStatusNode[] = [
         docLinks: [{ label: 'P1.10 设计', path: 'docs/features/MARKET_RESEARCH_DECISION_CENTER_DESIGN.md' }],
       },
       {
+        id: 'market-overview',
+        title: '市场全景研究终端（QTA V2 MR-1B）',
+        category: '行情基础',
+        priority: 'P1',
+        deliveryStatus: 'DELIVERED',
+        validationStage: 'RUNTIME_VERIFIED',
+        productValue: '把市场状态数据化为可核对证据链：基准趋势与回撤、流动性与交易活跃度、市场广度、行业成交占比迁移和质量边界一屏核对后再下结论。',
+        deliveredContent: [
+          '/market-research 重写为市场全景终端，消费 GET /api/v1/market-research/overview（首期仅 CN）',
+          '基准趋势与回撤 / 流动性与交易活跃度 / 市场广度 三组 lightweight-charts 多分面共享时间轴，null 指标为断点',
+          '行业成交占比迁移 Top-8+OTHER 自研 SVG 堆叠面积图，悬停展示逐日排名/占比/成交额/环比',
+          '研究上下文栏（数据截至、样本、日K覆盖、行业映射、合格交易日、Provider）与数据质量面板（DEGRADED 告警、OFFICIAL_MONEY_FLOW 不可用、口径假设）',
+          'NO_DATA/DEGRADED/INDUSTRY_MIGRATION_BLOCKED/请求失败全状态处理；remote 失败只报错重试，不回退 mock',
+        ],
+        completionCriteria: [
+          '前端 typecheck / lint / test（419 tests）/ build 全绿',
+          '本地 Docker 真实后端（qta-mysql + qta-server）+ Vite proxy 浏览器五区块验收通过',
+          'mock 仅虚构演示数据并持续标注，不生成虚假资金流或规律性演示曲线',
+        ],
+        remainingWork: ['Codex 独立验收后合并双仓任务分支', '服务器部署验收（NOT_DEPLOYED）', 'market_calendar 回填后合格交易日口径复核'],
+        nextActions: ['等待独立验收，期间不 push 不合并'],
+        backendState: 'MR-1A overview API 已交付（后端分支 codex/qta-v2-mr1-market-overview-backend，能力 VERIFIED）',
+        frontendState: '五区块 + 全状态处理已实现，本地真实后端浏览器验收通过（1440×900 / 1280×800 / 390×844）',
+        lastUpdatedAt: '2026-08-16',
+        backendCommit: 'f0dd121',
+        acceptanceRef: 'docs/development/MARKET_RESEARCH_MR1B_FRONTEND_IMPLEMENTATION.md',
+        risks: ['dataScope=SAMPLE 且 0.90 覆盖门禁下真实数据常态 DEGRADED，属诚实门禁而非页面故障'],
+        limitations: ['样本域 Top-150∪基准非全市场；官方资金流 UNAVAILABLE；服务器未部署；前端候选 commit hash 待独立验收后在交付收口补录。'],
+        docLinks: [{ label: 'MR-1B 实现与验收记录', path: 'docs/development/MARKET_RESEARCH_MR1B_FRONTEND_IMPLEMENTATION.md' }],
+      },
+      {
         id: 'market-movement-dashboard',
         title: '异动大屏',
         category: '行情基础',
@@ -1320,8 +1341,8 @@ const capabilities: BuildStatusNode[] = [
 ];
 
 export const buildStatusSnapshot: BuildStatusSnapshot = {
-  snapshotAt: '2026-08-13',
-  releaseStage: 'P1 市场研究与行情数据资产',
+  snapshotAt: '2026-08-16',
+  releaseStage: 'QTA V2 MR-1 市场全景（P1 数据资产运行中）',
   backendCommit: '396d197',
   frontendCommit: '8943636',
   recentDeliveries,

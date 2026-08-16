@@ -30,7 +30,7 @@ const menuItems = [
   { key: '/review', icon: <FormOutlined />, label: '盘后复盘' },
   { key: '/market-data', icon: <LineChartOutlined />, label: '行情数据' },
   { key: '/market-workspace', icon: <FundProjectionScreenOutlined />, label: '行情工作台' },
-  { key: '/market-research', icon: <RadarChartOutlined />, label: '市场雷达' },
+  { key: '/market-research', icon: <RadarChartOutlined />, label: '市场全景' },
   { key: '/market-segments', icon: <FundProjectionScreenOutlined />, label: '板块管理' },
   { key: '/market-assets', icon: <LineChartOutlined />, label: '行情资产' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },

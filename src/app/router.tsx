@@ -16,7 +16,7 @@ const MarketWorkspacePage = lazy(() => import('../pages/market-workspace').then(
 const MarketSegmentsPage = lazy(() => import('../pages/market-segments').then((m) => ({ default: m.MarketSegmentsPage })));
 const MarketAssetsPage = lazy(() => import('../pages/market-assets').then((m) => ({ default: m.MarketAssetsPage })));
 const MarketResearchPage = lazy(() => import('../pages/market-research').then((m) => ({ default: m.MarketResearchPage })));
-const MarketResearchSectorPage = lazy(() => import('../pages/market-research').then((m) => ({ default: m.MarketResearchSectorPage })));
+const MarketResearchSectorPage = lazy(() => import('../pages/market-research-sector').then((m) => ({ default: m.MarketResearchSectorPage })));
 const SettingsPage = lazy(() => import('../pages/settings').then((m) => ({ default: m.SettingsPage })));
 const BuildStatusPage = lazy(() => import('../pages/build-status').then((m) => ({ default: m.BuildStatusPage })));
 const NotFoundPage = lazy(() => import('../pages/not-found').then((m) => ({ default: m.NotFoundPage })));
