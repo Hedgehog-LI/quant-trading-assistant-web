@@ -1,0 +1,57 @@
+/* 数据中心（/data-foundation）样式：简洁运营页，无营销元素。 */
+
+.data-foundation-page {
+  min-width: 0;
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+.data-foundation-page .ant-card {
+  border-radius: 6px;
+}
+
+.df-page-header {
+  margin-bottom: 12px;
+}
+
+.df-panel-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.df-task-form {
+  max-width: 560px;
+}
+
+.df-task-form__derived {
+  margin: -8px 0 16px;
+  padding: 6px 10px;
+  border-left: 3px solid #1677ff;
+  background: #f8fafc;
+  border-radius: 4px;
+}
+
+.df-dataset-panel,
+.df-import-panel,
+.df-coverage-quality {
+  min-width: 0;
+}
+
+.df-coverage-quality .ant-card + .ant-card {
+  margin-top: 0;
+}
+
+@media (max-width: 768px) {
+  .df-panel-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .df-task-form {
+    max-width: none;
+  }
+}
