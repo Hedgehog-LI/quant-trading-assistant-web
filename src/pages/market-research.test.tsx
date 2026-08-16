@@ -116,6 +116,21 @@ describe('MarketResearchPage（市场全景）', () => {
     expect(mockedGetMarketOverview).toHaveBeenCalledWith('CN', '2026-07-01', '2026-07-31');
   });
 
+  it('mock 模式不调用接口、不渲染行情图，仅提示切换后端模式', () => {
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    render(<MarketResearchPage />, { wrapper: Wrapper });
+
+    expect(screen.getByTestId('overview-mock-unavailable')).toBeInTheDocument();
+    expect(screen.getByText('市场全景需要后端数据模式，请在设置中切换为后端模式。')).toBeInTheDocument();
+    expect(mockedGetMarketOverview).not.toHaveBeenCalled();
+    expect(screen.queryByText('基准趋势与回撤')).not.toBeInTheDocument();
+    expect(screen.queryByText('数据质量与可解释状态')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stub-benchmark-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stub-activity-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stub-breadth-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stub-migration-chart')).not.toBeInTheDocument();
+  });
+
   it('null 覆盖率显示占位 --，不显示为 0', async () => {
     const overview = buildOverview('DEGRADED');
     overview.metadata.barCoverage = null;
@@ -179,13 +194,17 @@ describe('MarketResearchPage（市场全景）', () => {
     expect(screen.queryByText('基准趋势与回撤')).not.toBeInTheDocument();
   });
 
-  it('API 错误展示错误态与重试入口，不回退演示数据', async () => {
+  it('API 错误展示错误态与重试入口，不回退任何假数据', async () => {
     mockedGetMarketOverview.mockRejectedValue(new Error('Network Error'));
     render(<MarketResearchPage />, { wrapper: Wrapper });
 
     expect(await screen.findByText('市场全景数据加载失败')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重试/ })).toBeInTheDocument();
     expect(screen.queryByTestId('stub-benchmark-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stub-migration-chart')).not.toBeInTheDocument();
+    expect(screen.queryByText('基准趋势与回撤')).not.toBeInTheDocument();
+    // remote 确实尝试过请求且只请求一次，失败后没有任何本地数据兜底
+    expect(mockedGetMarketOverview).toHaveBeenCalledTimes(1);
   });
 
   it('刷新按钮触发重新查询（同窗口参数）', async () => {

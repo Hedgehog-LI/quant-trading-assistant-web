@@ -5,6 +5,7 @@
  * 基准趋势与回撤 → 成交活跃度/价格冲击代理 → 市场广度 → 行业成交占比迁移 → 数据质量。
  * 旧"市场雷达"结构已被本页替换；板块详情路由保留（market-research-sector.tsx）。
  * 状态纪律：loading/error/NO_DATA/DEGRADED 全覆盖；null 显示 '--' 或断点，禁止 0 冒充；
+ * 仅消费真实后端数据：mock 模式直接提示切换后端模式，不渲染任何模拟行情；
  * remote 失败不回退 mock；行业迁移阻断时渲染明确空态而非伪图。
  */
 import { useState } from 'react';
@@ -31,6 +32,7 @@ import { OverviewContextBar } from '../features/market-overview/components/Overv
 import { QualityPanel } from '../features/market-overview/components/QualityPanel';
 import { useMarketOverview } from '../features/market-overview/hooks/useMarketOverview';
 import type { OverviewMarket } from '../features/market-overview/api/marketOverviewApi';
+import { getSettings } from '../features/settings/api/settingsApi';
 import './market-overview.css';
 
 const { Title, Text } = Typography;
@@ -51,6 +53,7 @@ export function MarketResearchPage() {
   const [pendingRange, setPendingRange] = useState<{ start: string; end: string }>({ start, end });
 
   const overview = useMarketOverview(market, start, end);
+  const mockMode = getSettings().apiMode === 'mock';
   const data = overview.data;
   const metadata = data?.metadata ?? null;
   const loading = overview.isLoading;
@@ -85,6 +88,16 @@ export function MarketResearchPage() {
         </Text>
       </div>
 
+      {mockMode ? (
+        <Card>
+          <Empty
+            data-testid="overview-mock-unavailable"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="市场全景需要后端数据模式，请在设置中切换为后端模式。"
+          />
+        </Card>
+      ) : (
+        <>
       <OverviewContextBar
         start={pendingRange.start}
         end={pendingRange.end}
@@ -173,6 +186,8 @@ export function MarketResearchPage() {
           <Card className="overview-section" title="数据质量与可解释状态">
             <QualityPanel quality={data.quality} qualityStatus={metadata?.qualityStatus ?? 'OK'} />
           </Card>
+        </>
+      )}
         </>
       )}
     </div>

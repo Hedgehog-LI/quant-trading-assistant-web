@@ -1,12 +1,14 @@
 # MR-1B 市场全景前端实现与验收记录（2026-08-16）
 
 > 任务：将 `/market-research` 重写为 V2 市场全景研究终端，消费 MR-1A `GET /api/v1/market-research/overview?market=CN&start=&end=`。分支 `codex/qta-v2-market-overview-complete`（前端候选 commit，未 push，等待 Codex 独立验收）。后端本任务只读核对，未改代码。
+>
+> **定点修复（2026-08-16 第二轮，验收发现）**：删除 mock 模式下的正弦/余弦合成市场全景数据（demoOverview/DEMO_INDUSTRIES/demoTradingDates 及 mock 分支全部移除）。市场全景仅消费真实后端数据：apiMode=mock 时查询禁用（不自动调用 remote），页面仅提示"市场全景需要后端数据模式，请在设置中切换为后端模式。"，不渲染任何模拟行情图，无演示水印。remote 行为不变（失败直接报错，绝不回退假数据）。
 
 ## 1. 目标与范围
 
 - 五个证据区块：研究上下文栏、基准趋势与回撤、流动性与交易活跃度、市场广度、行业成交占比迁移、数据质量面板。
 - 全状态处理：loading / error / NO_DATA / DEGRADED / INSUFFICIENT_WARMUP / LOW_*_COVERAGE / INDUSTRY_MIGRATION_BLOCKED / OFFICIAL_MONEY_FLOW=UNAVAILABLE / 指标 null 断点。
-- 口径规则：null 一律显示 `--` 或图表断点，禁止当 0；金额 万/亿 两档；比值 ×100 百分比；illiquidity 科学计数法；remote 失败只报错重试，禁止回退 mock；mock 仅虚构演示数据并持续标注。
+- 口径规则：null 一律显示 `--` 或图表断点，禁止当 0；金额 万/亿 两档；比值 ×100 百分比；illiquidity 科学计数法；remote 失败只报错重试，禁止回退假数据；市场全景仅消费真实后端数据，mock 模式提示切换后端模式且不渲染任何模拟行情。
 - 视口：1440×900、1280×800、≤768px 移动。
 - 不做：MR-2 官方资金流、策略、候选、盘中功能。
 
@@ -17,7 +19,7 @@ src/features/market-overview/
 ├── model/types.ts                # MarketOverview 类型树（对齐后端 MarketOverviewVO 字段逐一对齐）
 ├── model/formatters.ts           # formatMoney(万/亿/元)/formatPercent/formatSignedPercent/formatIlliquidity/dash
 ├── model/overviewTransform.ts    # LWC LinePoint/HistogramPoint 转换(null→whitespace 断点)、迁移图层排序(Top-8+OTHER)与 tooltip 行
-├── api/marketOverviewApi.ts      # remote=axios client.get('/market-research/overview') + unwrap；mock=DEMO 虚构数据(LOCAL_DEMO)
+├── api/marketOverviewApi.ts      # 仅 remote：client.get('/market-research/overview') + unwrap，无任何本地合成数据
 ├── hooks/useMarketOverview.ts    # TanStack Query ['market-overview', market, start, end, mode] retry:false
 └── components/
     ├── chartKit.ts               # chart 创建/透明背景/十字光标 tooltip/ResizeObserver/生命周期
@@ -36,15 +38,15 @@ src/features/market-overview/
 - remote：共享 axios client（settings.apiBaseUrl 为空 → 同源 `/api/v1`，开发期 Vite proxy `VITE_DEV_PROXY_TARGET=http://127.0.0.1:8080`），`unwrap<MarketOverview>` 解包；HTTP 400（如 market=US）与业务 success=false 统一走错误 UI + 重试，不渲染半截数据。
 - 类型与后端 `MarketOverviewVO` 逐字段对齐：metadata（barCoverage/membershipCoverage/qualifiedTradingDays/qualityStatus/limitations/unavailableMetrics/coverageGap/providerAttribution）、benchmarkSeries、activitySeries、breadthSeries、liquidityProxySeries、industryTurnoverMigration、quality（findings/assumptions）。
 - null 语义：转换层把 null 指标写成 lightweight-charts whitespace 点（`{time}`）形成可见断点，不连线、不补 0；DEGRADED 保留全部短期序列渲染，中期指标（MA60/60 日基线）预热不足保持断点。
-- mock：仅 LOCAL_DEMO 虚构指数 DEMO.IDX01 与 DEM_A..DEM_H 行业，跳过周末的 28 天日历，quality 注明演示来源；mock 与 remote 数据路径完全隔离。
+- mock：市场全景不提供任何模拟行情。apiMode=mock 时 `useMarketOverview` 禁用查询（不自动调用 remote），页面仅渲染"市场全景需要后端数据模式，请在设置中切换为后端模式。"提示（testid `overview-mock-unavailable`），不渲染上下文栏与五类行情图；api 层无 mock 分支，无论 localStorage 模式如何都只走 HTTP。
 
 ## 4. 自动化验证
 
-- `npm run typecheck` / `npm run lint` / `npm run test`（**53 files / 419 tests 全绿**）/ `npm run build` 通过；`git diff --check` 干净。
+- `npm run typecheck` / `npm run lint` / `npm run test`（**53 files / 421 tests 全绿**）/ `npm run build` 通过；`git diff --check` 干净。
 - 新增/重写测试：
-  - `api/marketOverviewApi.test.ts`（122 行）：remote 参数拼装、DEGRADED/NO_DATA 透传、HTTP 失败与业务失败 reject、mock 虚构数据 + LOCAL_DEMO。
+  - `api/marketOverviewApi.test.ts`：remote 参数拼装、DEGRADED/NO_DATA 透传、HTTP 失败与业务失败 reject、mock 模式设置下仍只走 HTTP（返回值逐字段等于后端响应，无本地合成）且 HTTP 失败同样抛错不回退。
   - `model/overviewTransform.test.ts`（139 行）：格式化器边界（亿/万/元、百分比、科学计数、null→`--`）、null→whitespace 断点、迁移图层排序（OTHER 恒最后）与 tooltip 排序。
-  - `src/pages/market-research.test.tsx`（222 行，重写）：OK 五区块 + 上下文栏数字、覆盖率 null 显示 `--`、DEGRADED 告警 + 资金流不可用标签且图表保留、迁移阻断 Empty、NO_DATA 不渲染图表、请求失败 + 重试重查、刷新触发重复查询、板块详情页回归。
+  - `src/pages/market-research.test.tsx`（重写）：OK 五区块 + 上下文栏数字、mock 模式不调接口不出图仅提示切换后端模式、覆盖率 null 显示 `--`、DEGRADED 告警 + 资金流不可用标签且图表保留、迁移阻断 Empty、NO_DATA 不渲染图表、remote 请求失败 + 重试（无任何假数据兜底）、刷新触发重复查询、板块详情页回归。
 
 ## 5. 真实后端联调（Docker）
 

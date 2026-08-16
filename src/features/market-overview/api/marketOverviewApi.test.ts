@@ -109,14 +109,24 @@ describe('marketOverviewApi', () => {
     await expect(getMarketOverview('CN', '2026-07-01', '2026-07-31')).rejects.toThrow('market 不能为空');
   });
 
-  it('mock 仅返回虚构行业与 DEMO 基准的演示数据，并标记 LOCAL_DEMO', async () => {
+  it('mock 模式设置下仍只走 HTTP：不存在本地合成 MarketOverview 路径', async () => {
     saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    const serverData = minimalOverview('OK');
+    const get = vi.spyOn(client, 'get').mockResolvedValue(okResponse(serverData));
 
     const overview = await getMarketOverview('CN', '2026-07-01', '2026-07-31');
 
-    expect(overview.metadata.benchmarkSymbol).toBe('DEMO.IDX01');
-    expect(overview.industryTurnoverMigration.every((row) => row.industryCode.startsWith('DEM_') || row.industryCode === 'OTHER')).toBe(true);
-    expect(overview.quality.qualityFindings.some((finding) => finding.code === 'LOCAL_DEMO')).toBe(true);
-    expect(JSON.stringify(overview)).not.toContain('贵州茅台');
+    expect(get).toHaveBeenCalledTimes(1);
+    // 返回值逐字段等于后端响应，无任何本地合成或二次加工
+    expect(overview).toEqual(serverData);
+    expect(overview.metadata.benchmarkSymbol).toBe('SH.000001');
+    expect(JSON.stringify(overview)).not.toContain('DEMO');
+  });
+
+  it('mock 模式设置下 HTTP 失败同样抛错，绝不回退本地假数据', async () => {
+    saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
+    vi.spyOn(client, 'get').mockRejectedValue(new Error('Network Error'));
+
+    await expect(getMarketOverview('CN', '2026-07-01', '2026-07-31')).rejects.toThrow('Network Error');
   });
 });
