@@ -17,9 +17,10 @@ export type DatasetVersionStatus =
   | 'RELEASED'
   | 'RETIRED';
 
-// ---- 回补任务状态机 ----
+// ---- 回补任务状态机（QUEUED 为异步执行契约新增：run 快速返回后先排队） ----
 export type BackfillTaskStatus =
   | 'PENDING'
+  | 'QUEUED'
   | 'RUNNING'
   | 'PAUSED'
   | 'SUCCEEDED'
@@ -71,6 +72,14 @@ export interface DatasetVersion {
   releasedAt: string | null;
   createdAt: string | null;
   isCurrentReleased: boolean | null;
+  /**
+   * 以下为后端并行修复的可选新增血缘字段（契约允许缺失）：
+   * 内容哈希 / 清单行数 / 血缘状态。旧后端返回 null，页面显示 '--'，
+   * lineageStatus 非 OK/VERIFIED 视为异常并给出"不可宣称可复现"警告。
+   */
+  contentHash?: string | null;
+  manifestRowCount?: number | null;
+  lineageStatus?: string | null;
 }
 
 export interface BackfillTask {
@@ -160,6 +169,8 @@ export interface ImportBatch {
   /** 错误行报告 JSON 字符串（可展开查看）。 */
   errorReportJson: string | null;
   createdAt: string | null;
+  /** DAILY_BAR 导入关联的数据集版本（契约新增，可选；旧后端为 null 显示 '--'）。 */
+  datasetVersionId?: number | null;
 }
 
 /** 创建回补任务入参（对齐后端 CreateBackfillTaskDTO；日期 YYYY-MM-DD）。 */
@@ -173,4 +184,22 @@ export interface CreateBackfillTaskInput {
   endDate: string;
   symbols?: string[];
   chunkSize?: number;
+}
+
+/** 创建数据集定义入参（对齐后端 CreateDatasetDTO；首期冻结组合见 DATASET_PROVIDER_OPTIONS）。 */
+export interface CreateDatasetInput {
+  datasetCode: string;
+  datasetName: string;
+  marketCode: string;
+  barType: string;
+  frequency: string;
+  providerCode: string;
+  adjustType: string;
+  description?: string;
+}
+
+/** 手动创建数据集版本入参（仅 IMPORT_* 数据集；日期 YYYY-MM-DD）。 */
+export interface CreateDatasetVersionInput {
+  startDate: string;
+  endDate: string;
 }

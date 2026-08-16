@@ -15,6 +15,8 @@ import type {
   BackfillTask,
   CoverageWatermark,
   CreateBackfillTaskInput,
+  CreateDatasetInput,
+  CreateDatasetVersionInput,
   Dataset,
   DatasetVersion,
   ImportBatch,
@@ -47,6 +49,21 @@ export interface ImportBatchQuery {
 
 export function listDatasets(): Promise<Dataset[]> {
   return unwrap<Dataset[]>(client.get(`${BASE}/datasets`));
+}
+
+/** 创建数据集定义（首期冻结组合：TENCENT_PUBLIC/IMPORT_CSV_DAILY × NONE 复权 × CN × DAILY × 1D）。 */
+export function createDataset(input: CreateDatasetInput): Promise<Dataset> {
+  return unwrap<Dataset>(client.post(`${BASE}/datasets`, input));
+}
+
+/** 手动创建数据集版本（仅 IMPORT_* 数据集；body：startDate/endDate）。 */
+export function createDatasetVersion(
+  datasetCode: string,
+  input: CreateDatasetVersionInput,
+): Promise<DatasetVersion> {
+  return unwrap<DatasetVersion>(
+    client.post(`${BASE}/datasets/${encodeURIComponent(datasetCode)}/versions`, input),
+  );
 }
 
 export function listDatasetVersions(datasetCode: string): Promise<DatasetVersion[]> {
@@ -116,12 +133,20 @@ export function publishVersion(versionId: number): Promise<DatasetVersion> {
 
 // ---------------------------------------------------------------- CSV 导入
 
-/** 上传导入文件：kind 走查询参数，文件走 multipart 字段名 file（Content-Type 由浏览器生成）。 */
-export function uploadImportSnapshot(kind: ImportKind | string, file: File): Promise<ImportBatch> {
+/**
+ * 上传导入文件：kind 走查询参数，文件走 multipart 字段名 file（Content-Type 由浏览器生成）。
+ * datasetVersionId 为契约新增可选参数：DAILY_BAR 导入必须关联导入类数据集版本；
+ * 其他 kind 不传（undefined 被 axios 参数序列化剔除）。
+ */
+export function uploadImportSnapshot(
+  kind: ImportKind | string,
+  file: File,
+  datasetVersionId?: number,
+): Promise<ImportBatch> {
   const formData = new FormData();
   formData.append('file', file);
   return unwrap<ImportBatch>(client.post(`${BASE}/imports`, formData, {
-    params: { kind },
+    params: { kind, datasetVersionId },
   }));
 }
 

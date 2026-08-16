@@ -76,6 +76,21 @@ export const EARLIEST_START_DATE = '2021-01-01';
 /** 每分片证券数上限（后端 FoundationConstants.MAX_CHUNK_SIZE）。 */
 export const MAX_CHUNK_SIZE = 500;
 
+/**
+ * 数据集创建首期冻结组合（后端首期支持的 provider × 复权，避免随意输入）：
+ * TENCENT_PUBLIC=腾讯公共源线上回补（实验性）；IMPORT_CSV_DAILY=CSV 导入通道。
+ * 复权首期仅 NONE；market=CN、barType=DAILY、frequency=1D 固定。
+ */
+export const DATASET_PROVIDER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'TENCENT_PUBLIC', label: 'TENCENT_PUBLIC（腾讯公共源·实验性）' },
+  { value: 'IMPORT_CSV_DAILY', label: 'IMPORT_CSV_DAILY（CSV 导入·日 K）' },
+];
+
+/** datasetCode 校验：大写字母/数字/下划线，3-64 位。 */
+export function isValidDatasetCode(value: string): boolean {
+  return /^[A-Z][A-Z0-9_]{2,63}$/.test(value);
+}
+
 export const VERSION_STATUS_COLOR: Record<string, string> = {
   DRAFT: 'default',
   BACKFILLING: 'processing',
@@ -88,12 +103,55 @@ export const VERSION_STATUS_COLOR: Record<string, string> = {
 
 export const TASK_STATUS_COLOR: Record<string, string> = {
   PENDING: 'default',
+  QUEUED: 'processing',
   RUNNING: 'processing',
   PAUSED: 'warning',
   SUCCEEDED: 'success',
   PARTIAL_FAILED: 'warning',
   FAILED: 'error',
 };
+
+/** 任务状态中文标签（要求明确区分 排队中/执行中/已暂停/部分失败/已失败/已成功）。 */
+export const TASK_STATUS_LABEL: Record<string, string> = {
+  PENDING: '待启动',
+  QUEUED: '排队中',
+  RUNNING: '执行中',
+  PAUSED: '已暂停',
+  SUCCEEDED: '已成功',
+  PARTIAL_FAILED: '部分失败',
+  FAILED: '已失败',
+};
+
+/** 状态中文标签（未知状态回退原始 code，不伪造语义）。 */
+export function taskStatusLabel(status: string | null | undefined): string {
+  if (!status) return '--';
+  return TASK_STATUS_LABEL[status] ?? status;
+}
+
+/** 需要轮询的活跃任务状态（PENDING/QUEUED/RUNNING；终态与 PAUSED 停止轮询）。 */
+const ACTIVE_BACKFILL_STATUSES = new Set(['PENDING', 'QUEUED', 'RUNNING']);
+
+export function isActiveBackfillStatus(status: string | null | undefined): boolean {
+  return status != null && ACTIVE_BACKFILL_STATUSES.has(status);
+}
+
+/** 任务轮询间隔（ms）；仅活跃状态返回 2000，其余 false（不永久轮询）。 */
+export const TASK_POLL_INTERVAL_MS = 2000;
+
+/** 血缘状态正常取值（契约未冻结全集；null=后端未提供不告警，非正常值视为异常）。 */
+const LINEAGE_NORMAL_STATUSES = new Set(['OK', 'VERIFIED']);
+
+export function isLineageStatusAbnormal(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return !LINEAGE_NORMAL_STATUSES.has(status.toUpperCase());
+}
+
+/** contentHash 缩短展示（前 8 + … + 后 4；title 保留完整值）。 */
+export function shortenHash(value: string | null | undefined): string {
+  if (!value) return '--';
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 8)}…${value.slice(-4)}`;
+}
 
 export const CHUNK_STATUS_COLOR: Record<string, string> = {
   PENDING: 'default',
