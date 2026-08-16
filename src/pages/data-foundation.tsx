@@ -4,11 +4,14 @@
  * 三个页签：回补任务（创建/列表/详情分片/启动暂停重试）、数据集与版本（版本/发布/质量/覆盖）、
  * CSV 导入（五类 kind 上传与批次结果）。
  *
+ * 轮询纪律：任务列表仅在有活跃任务（PENDING/QUEUED/RUNNING）时按 2s 轮询（hooks 控制）；
+ * 活跃任务进入终态后停止轮询并刷新版本/发布指针（本页 transition effect，只触发一次）。
+ *
  * 状态纪律：loading(Skeleton)/empty(Empty)/error(Alert+重试，展示后端 message)/
  * partial(PARTIAL_FAILED 等明确标色)；null 计数显示 '--' 不显示 0；
  * 仅消费真实后端数据——mock 模式提示切换后端模式且不发起任何请求，remote 失败不回退假数据。
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, Empty, Tabs, Typography } from 'antd';
 import { BackfillTaskDrawer } from '../features/data-foundation/components/BackfillTaskDrawer';
@@ -17,6 +20,7 @@ import { BackfillTaskTable } from '../features/data-foundation/components/Backfi
 import { DatasetVersionPanel } from '../features/data-foundation/components/DatasetVersionPanel';
 import { ImportPanel } from '../features/data-foundation/components/ImportPanel';
 import { useBackfillTaskList } from '../features/data-foundation/hooks/useDataFoundation';
+import { isActiveBackfillStatus } from '../features/data-foundation/model/format';
 import { getSettings } from '../features/settings/api/settingsApi';
 import './data-foundation.css';
 
@@ -36,6 +40,25 @@ export function DataFoundationPage() {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
 
   const taskList = useBackfillTaskList({ status: undefined, page: taskPage, pageSize: taskPageSize });
+
+  // 活跃任务集合快照：任务从活跃转为终态（仍出现在当前页）时刷新版本与发布指针一次。
+  // 分页导致任务离开当前页不算完成（不在 items 中即忽略），避免误触发刷新。
+  const activeTaskIdsRef = useRef<ReadonlySet<number>>(new Set());
+  useEffect(() => {
+    const items = taskList.data?.items ?? [];
+    const nextActive = new Set(items.filter((task) => isActiveBackfillStatus(task.status)).map((task) => task.id));
+    const previous = activeTaskIdsRef.current;
+    let anyFinished = false;
+    for (const id of previous) {
+      const task = items.find((item) => item.id === id);
+      if (task && !nextActive.has(id)) anyFinished = true;
+    }
+    activeTaskIdsRef.current = nextActive;
+    if (anyFinished) {
+      void queryClient.invalidateQueries({ queryKey: ['data-foundation', 'versions'] });
+      void queryClient.invalidateQueries({ queryKey: ['data-foundation', 'released'] });
+    }
+  }, [taskList.data, queryClient]);
 
   if (mockMode) {
     return (

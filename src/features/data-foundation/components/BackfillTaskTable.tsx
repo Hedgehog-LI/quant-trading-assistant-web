@@ -1,11 +1,12 @@
 /**
- * 回补任务列表：状态 Tag + 计数（null 显示 '--'）+ 分页 + 刷新 + 详情入口。
- * PARTIAL_FAILED 等中间态明确标色，不伪装成成功。
+ * 回补任务列表：状态 Tag（中文标签：排队中/执行中/已暂停/部分失败/已失败/已成功，
+ * title 保留原始状态码）+ 计数（null 显示 '--'）+ 分页 + 刷新 + 详情入口。
+ * PARTIAL_FAILED 等中间态明确标色，不伪装成成功；不展示假进度百分比。
  */
 import { Alert, Button, Empty, Skeleton, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { formatCount, formatDateTime, tagColor, TASK_STATUS_COLOR } from '../model/format';
+import { formatCount, formatDateTime, tagColor, TASK_STATUS_COLOR, taskStatusLabel } from '../model/format';
 import type { BackfillTask } from '../model/types';
 
 const { Text } = Typography;
@@ -33,8 +34,14 @@ export function BackfillTaskTable({
     { title: '窗口', key: 'window', width: 200, render: (_, task) => (
       <span>{task.startDate ?? '--'} ~ {task.endDate ?? '--'}</span>
     ) },
-    { title: '状态', dataIndex: 'status', width: 130, render: (status: string) => (
-      <Tag color={tagColor(TASK_STATUS_COLOR, status)} data-testid={`task-status-${status}`}>{status}</Tag>
+    { title: '状态', dataIndex: 'status', width: 110, render: (status: string) => (
+      <Tag
+        color={tagColor(TASK_STATUS_COLOR, status)}
+        title={status}
+        data-testid={`task-status-${status}`}
+      >
+        {taskStatusLabel(status)}
+      </Tag>
     ) },
     { title: '计划/成功/失败/跳过', key: 'counts', width: 170, render: (_, task) => (
       <Space size={4}>

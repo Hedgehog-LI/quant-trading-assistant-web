@@ -48,6 +48,15 @@ function buildColumns(): ColumnsType<ImportBatch> {
     { title: '批次', dataIndex: 'id', width: 70 },
     { title: '类型', dataIndex: 'importKind', width: 190 },
     { title: '文件', dataIndex: 'fileName', width: 170, render: (value: string | null) => value ?? '--' },
+    { title: '关联版本', key: 'version', width: 90, render: (_, batch) =>
+      batch.datasetVersionId != null ? (
+        <Typography.Text code data-testid={`import-batch-version-${batch.id}`}>
+          #{batch.datasetVersionId}
+        </Typography.Text>
+      ) : (
+        <Typography.Text type="secondary">--</Typography.Text>
+      ),
+    },
     { title: '新增/更新/跳过/拒绝', key: 'counts', width: 170, render: (_, batch) => (
       <span>
         {formatCount(batch.insertedCount)} / {formatCount(batch.updatedCount)} /{' '}

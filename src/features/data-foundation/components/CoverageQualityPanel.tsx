@@ -3,9 +3,11 @@
  *
  * - 质量表：checkCode + status Tag（OK 绿 / WARN 橙 / FAIL 红）+ affectedCount + detail 摘要；
  * - 覆盖率表：symbol + 覆盖百分比（coverageRatio 为 0..1 小数；null 显示 '--'）。
+ * - 发布阻断原因：存在 FAIL 检查项或版本 REJECTED 时给出明确阻断说明（来源为真实
+ *   质量结果，不展示没有来源的百分比）；FAIL 与 WARN 分开列示。
  * - FAIL/WARN 明确标色；空结果渲染 Empty，不把无数据当错误。
  */
-import { Alert, Card, Empty, Skeleton, Table, Tag, Typography } from 'antd';
+import { Alert, Card, Empty, Skeleton, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCoverage, useQualityResults } from '../hooks/useDataFoundation';
 import { QUALITY_STATUS_COLOR, formatCount, formatDateTime, formatRatioPercent, summarizeJson, tagColor } from '../model/format';
@@ -13,11 +15,17 @@ import type { CoverageWatermark, QualityResult } from '../model/types';
 
 export interface CoverageQualityPanelProps {
   versionId: number;
+  /** 选中版本状态（用于 REJECTED 阻断说明；可空）。 */
+  versionStatus?: string | null;
 }
 
-export function CoverageQualityPanel({ versionId }: CoverageQualityPanelProps) {
+export function CoverageQualityPanel({ versionId, versionStatus }: CoverageQualityPanelProps) {
   const quality = useQualityResults(versionId);
   const coverage = useCoverage(versionId);
+
+  const results = quality.data ?? [];
+  const failItems = results.filter((item) => item.status === 'FAIL');
+  const warnItems = results.filter((item) => item.status === 'WARN');
 
   const qualityColumns: ColumnsType<QualityResult> = [
     { title: '检查项', dataIndex: 'checkCode', width: 240 },
@@ -55,6 +63,33 @@ export function CoverageQualityPanel({ versionId }: CoverageQualityPanelProps) {
 
   return (
     <div className="df-coverage-quality" data-testid={`coverage-quality-${versionId}`}>
+      {failItems.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title="发布门禁阻断：存在 FAIL 质量检查项，该版本不可发布"
+          description={(
+            <Space direction="vertical" size={2}>
+              {failItems.map((item) => (
+                <Typography.Text type="danger" key={item.checkCode}>
+                  [FAIL] {item.checkCode}（影响 {formatCount(item.affectedCount)} 行）
+                </Typography.Text>
+              ))}
+              {warnItems.length > 0 && (
+                <Typography.Text type="warning">
+                  另有 WARN 项：{warnItems.map((item) => item.checkCode).join('、')}（不单独阻断，但会在门禁结果中留痕）
+                </Typography.Text>
+              )}
+              {versionStatus === 'REJECTED' && (
+                <Typography.Text type="secondary">版本状态 REJECTED：失败版本保留可查，但不会成为研究默认版本。</Typography.Text>
+              )}
+            </Space>
+          )}
+          data-testid="publish-gate-blocked"
+        />
+      )}
+
       <Card size="small" title={`版本 #${versionId} 质量结果（13 检查族）`} style={{ marginBottom: 12 }}>
         {quality.isError ? (
           <Alert

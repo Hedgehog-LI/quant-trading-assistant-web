@@ -1,24 +1,35 @@
 /**
- * 数据集与版本面板：数据集选择 + 版本列表（状态 Tag/发布标记）+ 当前发布版本卡
- * + 版本操作（质量检查 / 发布）。
+ * 数据集与版本面板：数据集选择（含新建数据集入口）+ 版本列表（状态 Tag/当前发布标记/
+ * 血缘字段 contentHash/manifestRowCount/lineageStatus）+ 当前发布版本卡 + 版本操作。
  *
  * - 发布仅对 QUALIFIED 版本开放；质量 FAIL/空数据由后端
  *   DATA_FOUNDATION_QUALITY_GATE_FAILED 拒绝并展示 message，前端不绕过门禁。
- * - 选中版本后联动 CoverageQualityPanel（覆盖率 + 质量结果）。
+ * - REJECTED 版本行可展开查看主要失败质量项（FAIL 检查族）；
+ * - lineageStatus 异常（非 OK/VERIFIED）显示警告，不宣称可复现；
+ * - 选中版本后联动 CoverageQualityPanel（覆盖率 + 质量结果 + 发布阻断原因）。
  */
-import { useMemo } from 'react';
-import { Alert, Button, Card, Descriptions, Empty, Select, Skeleton, Space, Table, Tag, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { Alert, Button, Card, Descriptions, Empty, Select, Skeleton, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   useDatasetVersions,
   useFoundationDatasets,
   usePublishVersion,
+  useQualityResults,
   useReleasedVersion,
   useRunQualityCheck,
 } from '../hooks/useDataFoundation';
-import { VERSION_STATUS_COLOR, formatCount, formatDateTime, tagColor } from '../model/format';
+import {
+  VERSION_STATUS_COLOR,
+  formatCount,
+  formatDateTime,
+  isLineageStatusAbnormal,
+  shortenHash,
+  tagColor,
+} from '../model/format';
 import type { DatasetVersion } from '../model/types';
 import { CoverageQualityPanel } from './CoverageQualityPanel';
+import { DatasetCreateModal } from './DatasetCreateModal';
 
 const { Text } = Typography;
 
@@ -37,6 +48,7 @@ export function DatasetVersionPanel({
   const released = useReleasedVersion(datasetCode);
   const qualityCheck = useRunQualityCheck();
   const publish = usePublishVersion();
+  const [createOpen, setCreateOpen] = useState(false);
 
   const datasetOptions = useMemo(
     () => (datasets.data ?? []).map((dataset) => ({
@@ -47,17 +59,47 @@ export function DatasetVersionPanel({
   );
 
   const actionError = qualityCheck.error ?? publish.error;
+  const datasetsEmpty = datasets.isSuccess && (datasets.data ?? []).length === 0;
 
   const columns: ColumnsType<DatasetVersion> = [
-    { title: '版本', dataIndex: 'versionCode', width: 130 },
-    { title: '状态', dataIndex: 'status', width: 120, render: (status: string) => (
-      <Tag color={tagColor(VERSION_STATUS_COLOR, status)}>{status}</Tag>
+    { title: '版本', dataIndex: 'versionCode', width: 120 },
+    { title: '状态', dataIndex: 'status', width: 120, render: (status: string, version) => (
+      <Space size={4}>
+        <Tag color={tagColor(VERSION_STATUS_COLOR, status)}>{status}</Tag>
+        {version.isCurrentReleased === true && (
+          <Tag color="success" data-testid={`current-released-${version.id}`}>当前发布</Tag>
+        )}
+      </Space>
     ) },
-    { title: '窗口', key: 'window', width: 190, render: (_, version) => (
+    { title: '窗口', key: 'window', width: 180, render: (_, version) => (
       <span>{version.startDate ?? '--'} ~ {version.endDate ?? '--'}</span>
     ) },
     { title: '行数', dataIndex: 'rowCount', width: 90, render: (value: number | null) => formatCount(value) },
-    { title: '来源', dataIndex: 'sourceProvider', width: 130, render: (value: string | null) => value ?? '--' },
+    { title: '清单行数', key: 'manifest', width: 90, render: (_, version) => (
+      <span data-testid={`version-manifest-${version.id}`}>{formatCount(version.manifestRowCount ?? null)}</span>
+    ) },
+    { title: '内容哈希', key: 'contentHash', width: 130, render: (_, version) =>
+      version.contentHash ? (
+        <Tooltip title={version.contentHash}>
+          <Typography.Text code data-testid={`version-hash-${version.id}`}>{shortenHash(version.contentHash)}</Typography.Text>
+        </Tooltip>
+      ) : (
+        <Text type="secondary">--</Text>
+      ),
+    },
+    { title: '血缘', key: 'lineage', width: 110, render: (_, version) =>
+      version.lineageStatus ? (
+        <Tag
+          color={isLineageStatusAbnormal(version.lineageStatus) ? 'warning' : 'default'}
+          data-testid={`version-lineage-${version.id}`}
+        >
+          {version.lineageStatus}
+        </Tag>
+      ) : (
+        <Text type="secondary">--</Text>
+      ),
+    },
+    { title: '来源', dataIndex: 'sourceProvider', width: 120, render: (value: string | null) => value ?? '--' },
     { title: '创建时间', dataIndex: 'createdAt', width: 140, render: (value: string | null) => formatDateTime(value) },
     { title: '操作', key: 'action', width: 200, render: (_, version) => (
       <Space size={4}>
@@ -102,8 +144,17 @@ export function DatasetVersionPanel({
             showSearch
             data-testid="dataset-select"
           />
+          <Button onClick={() => setCreateOpen(true)} data-testid="create-dataset-btn">
+            新建数据集
+          </Button>
         </Space>
       </div>
+
+      <DatasetCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(code) => onSelectDataset(code)}
+      />
 
       {datasets.isError && (
         <Alert
@@ -114,7 +165,24 @@ export function DatasetVersionPanel({
         />
       )}
 
-      {!datasetCode && (
+      {datasetsEmpty && (
+        <Card style={{ marginBottom: 12 }}>
+          <Empty
+            data-testid="create-dataset-entry"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={null}
+          >
+            <Space direction="vertical" size={8}>
+              <Text>尚无数据集。全新部署请先创建（首期支持 TENCENT_PUBLIC 线上回补与 IMPORT_CSV_DAILY 导入）。</Text>
+              <Button type="primary" onClick={() => setCreateOpen(true)} data-testid="create-dataset-entry-btn">
+                新建数据集
+              </Button>
+            </Space>
+          </Empty>
+        </Card>
+      )}
+
+      {!datasetCode && !datasetsEmpty && (
         <Card>
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请先选择数据集查看版本与发布状态。" />
         </Card>
@@ -173,8 +241,13 @@ export function DatasetVersionPanel({
               columns={columns}
               dataSource={versions.data ?? []}
               pagination={false}
-              scroll={{ x: 900 }}
+              scroll={{ x: 1100 }}
               locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该数据集暂无版本" /> }}
+              expandable={{
+                // REJECTED 版本展开查看主要失败质量项（按需拉取该版本质量结果）。
+                rowExpandable: (record) => record.status === 'REJECTED',
+                expandedRowRender: (record) => <RejectedFailList versionId={record.id} />,
+              }}
               onRow={(record) => ({
                 onClick: () => onSelectVersion(selectedVersionId === record.id ? null : record.id),
                 style: { cursor: 'pointer', background: selectedVersionId === record.id ? '#f0f7ff' : undefined },
@@ -183,14 +256,55 @@ export function DatasetVersionPanel({
           )}
 
           <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-            点击版本行查看覆盖率与质量结果（<Text code>点击当前选中行可取消</Text>）。
+            点击版本行查看覆盖率与质量结果（<Text code>点击当前选中行可取消</Text>）；
+            REJECTED 版本可展开查看主要失败质量项。
           </Typography.Paragraph>
 
           {selectedVersionId != null && (
-            <CoverageQualityPanel versionId={selectedVersionId} />
+            <CoverageQualityPanel
+              versionId={selectedVersionId}
+              versionStatus={(versions.data ?? []).find((v) => v.id === selectedVersionId)?.status ?? null}
+            />
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** REJECTED 版本展开行：列出 FAIL 检查族（主要失败质量项）。 */
+function RejectedFailList({ versionId }: { versionId: number }) {
+  const quality = useQualityResults(versionId);
+
+  if (quality.isLoading) return <Typography.Paragraph>质量结果加载中…</Typography.Paragraph>;
+  if (quality.isError) {
+    return (
+      <Alert
+        type="error" showIcon title="质量结果加载失败"
+        description={quality.error instanceof Error ? quality.error.message : '请重试。'}
+      />
+    );
+  }
+  const fails = (quality.data ?? []).filter((item) => item.status === 'FAIL');
+  if (fails.length === 0) {
+    return (
+      <Typography.Paragraph type="secondary" data-testid={`rejected-fails-${versionId}`}>
+        无 FAIL 检查项记录（可重新运行质量检查刷新结果）。
+      </Typography.Paragraph>
+    );
+  }
+  return (
+    <div data-testid={`rejected-fails-${versionId}`}>
+      <Typography.Paragraph type="danger" strong>
+        主要失败质量项（发布门禁阻断，FAIL 全部清单）：
+      </Typography.Paragraph>
+      <Space direction="vertical" size={4}>
+        {fails.map((item) => (
+          <Typography.Text type="danger" key={item.checkCode}>
+            [FAIL] {item.checkCode}（影响 {formatCount(item.affectedCount)} 行）
+          </Typography.Text>
+        ))}
+      </Space>
     </div>
   );
 }

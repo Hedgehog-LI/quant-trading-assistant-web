@@ -3,11 +3,12 @@
  *
  * - dataset 下拉（数据来自 GET /datasets）；market/provider/frequency/adjust 随所选数据集
  *   自动带出并以只读方式展示（后端 CreateBackfillTaskDTO 必填，不提供另选入口防口径混用）。
+ * - 数据集为空时给出"新建数据集"入口（DatasetCreateModal），创建成功后自动选中。
  * - 起止日期为 YYYY-MM-DD 文本输入并严格校验（格式/真实日历日/先后顺序/不早于 2021-01-01）。
  * - symbols 可选：逗号或空白分隔；chunkSize 可选 1-500（后端 MAX_CHUNK_SIZE）。
  * - 业务失败（如 DATA_FOUNDATION_*）展示后端 message，绝不伪造成功。
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Button, Form, Input, InputNumber, Select, Space, Typography } from 'antd';
 import { useCreateBackfillTask, useFoundationDatasets } from '../hooks/useDataFoundation';
 import {
@@ -18,6 +19,7 @@ import {
   parseSymbolsInput,
 } from '../model/format';
 import type { Dataset } from '../model/types';
+import { DatasetCreateModal } from './DatasetCreateModal';
 
 const { Text } = Typography;
 
@@ -38,6 +40,7 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
   const [form] = Form.useForm<FormValues>();
   const datasets = useFoundationDatasets();
   const createTask = useCreateBackfillTask();
+  const [createOpen, setCreateOpen] = useState(false);
 
   const datasetOptions = useMemo(
     () =>
@@ -95,6 +98,29 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
           data-testid="backfill-dataset-select"
         />
       </Form.Item>
+
+      {datasets.isSuccess && (datasets.data ?? []).length === 0 && (
+        <Alert
+          type="info"
+          showIcon
+          title="尚无数据集"
+          description={
+            <Space direction="vertical" size={4}>
+              <Text type="secondary">全新部署请先创建数据集（首期支持 TENCENT_PUBLIC 线上回补与 IMPORT_CSV_DAILY 导入）。</Text>
+              <Button size="small" onClick={() => setCreateOpen(true)} data-testid="backfill-create-dataset-entry">
+                新建数据集
+              </Button>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      <DatasetCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(code) => form.setFieldValue('datasetCode', code)}
+      />
 
       {selectedDataset && (
         <div className="df-task-form__derived">
