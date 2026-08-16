@@ -4,6 +4,8 @@
 > 遵守冻结 API 契约（QUEUED 异步执行 / POST /imports 可选 datasetVersionId / DatasetVersion 可选
 > contentHash·manifestRowCount·lineageStatus / 现有路径全部保留）。状态：**SELF_CHECKED**（待独立验收）。
 > 仅修改前端仓库；后端并行修复，本轮不等待后端。
+>
+> **Repair 轮（基于 `be5fb10`）**：用途隔离 / 创建反馈 / 表单收口，见文末"六、Repair 轮收口"。
 
 ## 一、修复内容（对齐任务八节要求）
 
@@ -106,3 +108,40 @@
 - Stage 3 测试与记录：3 个测试文件、4 张截图、本文档。
 
 不 push、不 merge；本轮 SELF_CHECKED，等待独立验收。
+
+## 六、Repair 轮收口（基于 be5fb10，SELF_CHECKED）
+
+### 1. 数据集用途隔离（不依赖用户理解 Provider 差异）
+- 回补任务表单数据集下拉只展示 `providerCode === TENCENT_PUBLIC` 的在线回补数据集，
+  `IMPORT_*` 导入类数据集被排除（`ONLINE_BACKFILL_PROVIDER` 常量冻结于 model/format）。
+- 仅有导入类数据集时回补表单明确提示（"暂无支持在线回补的数据集…导入类只用于 CSV 导入页签"）
+  并给出创建入口；数据集完全为空时提示全新部署创建。
+- `DatasetCreateModal` 新增 `providerLocked`：回补入口锁定 TENCENT_PUBLIC、导入入口锁定
+  IMPORT_CSV_DAILY（Select 禁用 + 仅锁定选项）；数据集与版本面板的通用入口不锁定（两种首期组合可选）。
+
+### 2. 创建任务后的可见反馈
+- `BackfillTaskForm.onCreated` 携带新任务对象；页面创建成功后回到任务列表第一页并**自动打开新任务
+  详情抽屉**（PENDING/QUEUED 状态、任务 ID、窗口、显式证券数、分片统计一目了然），表单同时重置。
+- 轮询语义不变：仅活跃任务（PENDING/QUEUED/RUNNING）2s 轮询，终态/PAUSED 停止，抽屉关闭即停。
+
+### 3. 表单状态收口
+- 两个创建 Modal（数据集/版本）：`destroyOnHidden` 重开自动重建表单；关闭（任意途径）与成功时
+  `mutation.reset()` 清理上一次错误态，重开不残留（G17 锁定）。
+- 切换导入数据集时清空不属于新数据集的版本选择（既有 onChange 行为，本轮复核保留）。
+- 结束日期晚于今天：`warningOnly` 前端提示（不阻断提交，提示文案注明"提交后以后端校验为准"），
+  覆盖回补表单与版本创建 Modal（`todayDateString()` 本地时区）。
+- 后端错误仍展示真实 message，不伪造成功（既有 Alert 路径不变）。
+
+### 4. 测试（页面 20→26 用例，全量 458→464）
+- G13 回补下拉排除 IMPORT_CSV_DAILY；G13b 仅导入类数据集时的提示与创建入口；
+- G14/G15 两个创建入口 Provider 锁定（antd disabled class + 仅锁定选项文本）；
+- G16 创建成功自动打开 #77 新任务抽屉（待启动/窗口/分片统计/表单重置）；
+- G17 Modal 重开清理上一次错误。
+- 既有轮询/API/页面测试全部保留并通过。
+
+### 5. 验证
+`npm run test -- --run` **56 files / 464 tests 全绿**；typecheck/lint/build/`git diff --check` 全部通过。
+本轮为纯前端改动 + 测试，未做浏览器复验（上一轮 remote 验收证据仍有效；新交互由组件测试锁定）。
+
+### 6. Repair 提交
+单次 repair commit（见 git log，`repair(data-foundation): ...`），不 push、不 merge。

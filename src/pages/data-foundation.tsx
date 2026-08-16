@@ -96,9 +96,11 @@ export function DataFoundationPage() {
               <div className="df-tab-backfill">
                 <Card size="small" title="创建回补任务" style={{ marginBottom: 12 }}>
                   <BackfillTaskForm
-                    onCreated={() => {
+                    onCreated={(created) => {
+                      // 创建成功后的可见反馈：回到任务列表第一页并自动打开新任务详情
+                      //（PENDING/QUEUED 状态、任务 ID、证券数、日期窗口、分片数一目了然）。
                       setTaskPage(1);
-                      void queryClient.invalidateQueries({ queryKey: ['data-foundation', 'backfill-tasks'] });
+                      setDrawerTaskId(created.id);
                     }}
                   />
                 </Card>

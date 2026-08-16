@@ -114,6 +114,14 @@ const queuedTask: BackfillTask = {
 
 const pausedTask: BackfillTask = { ...task, id: 9, status: 'PAUSED' };
 
+const newPendingTask: BackfillTask = {
+  ...task, id: 77, status: 'PENDING', datasetCode: 'CN_DAILY_BAR',
+  startDate: '2026-07-01', endDate: '2026-07-03',
+  successCount: 0, failCount: 0, succeededChunks: 0, failedChunks: 0,
+  lastErrorCode: null, lastErrorMessage: null, symbols: ['SH.600519'],
+  totalChunks: 1, plannedCount: 1,
+};
+
 const failedChunk: BackfillChunk = {
   id: 71, taskId: 7, chunkIndex: 3, symbols: ['SH.600519'], startDate: '2026-07-01',
   endDate: '2026-07-02', status: 'FAILED', attempts: 2, insertedCount: 0, updatedCount: 0,
@@ -378,6 +386,86 @@ describe('DataFoundationPage（数据中心）', () => {
     // 回补表单同样给出创建入口
     expect(screen.getByTestId('backfill-create-dataset-entry')).toBeInTheDocument();
   });
+
+  it('G13 回补数据集下拉只展示在线回补数据集（排除 IMPORT_CSV_DAILY 导入类）', async () => {
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    const selectRoot = screen.getByTestId('backfill-dataset-select');
+    fireEvent.mouseDown(selectRoot);
+    expect(await screen.findByText(DATASET_LABEL)).toBeInTheDocument();
+    expect(screen.queryByText(IMPORT_DATASET_LABEL)).not.toBeInTheDocument();
+  });
+
+  it('G13b 仅有导入类数据集时回补表单明确提示并给创建入口', async () => {
+    mockedListDatasets.mockResolvedValue([importDataset]);
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    expect(await screen.findByText('暂无支持在线回补的数据集')).toBeInTheDocument();
+    expect(screen.getByTestId('backfill-create-dataset-entry')).toBeInTheDocument();
+  });
+
+  it('G14 回补入口新建数据集 Provider 锁定 TENCENT_PUBLIC（禁选其他组合）', async () => {
+    mockedListDatasets.mockResolvedValue([]);
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(await screen.findByTestId('backfill-create-dataset-entry'));
+    const providerRoot = await screen.findByTestId('dataset-create-provider');
+    expect(providerRoot.className).toContain('ant-select-disabled');
+    expect(providerRoot.textContent).toContain('TENCENT_PUBLIC');
+    expect(providerRoot.textContent).not.toContain('IMPORT_CSV_DAILY');
+  });
+
+  it('G15 导入入口新建数据集 Provider 锁定 IMPORT_CSV_DAILY', async () => {
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+
+    fireEvent.click(await screen.findByTestId('import-create-dataset-entry'));
+    const providerRoot = await screen.findByTestId('dataset-create-provider');
+    expect(providerRoot.className).toContain('ant-select-disabled');
+    expect(providerRoot.textContent).toContain('IMPORT_CSV_DAILY');
+    expect(providerRoot.textContent).not.toContain('TENCENT_PUBLIC（');
+  });
+
+  it('G17 数据集创建 Modal 重开时清理上一次错误（不残留 mutation 错误态）', async () => {
+    mockedListDatasets.mockResolvedValue([]);
+    mockedCreateDataset.mockRejectedValueOnce(new Error('datasetCode 已存在'));
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    // 第一次打开：提交失败展示真实 message
+    fireEvent.click(await screen.findByTestId('backfill-create-dataset-entry'));
+    fireEvent.change(await screen.findByTestId('dataset-create-code'), { target: { value: 'CN_DAILY_X' } });
+    fireEvent.change(screen.getByTestId('dataset-create-name'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByRole('button', { name: '创 建' }));
+    expect(await screen.findByTestId('dataset-create-error')).toHaveTextContent('datasetCode 已存在');
+
+    // 关闭后重开：错误已清理
+    fireEvent.click(screen.getByRole('button', { name: '取 消' }));
+    fireEvent.click(await screen.findByTestId('backfill-create-dataset-entry'));
+    await screen.findByTestId('dataset-create-modal');
+    expect(screen.queryByTestId('dataset-create-error')).not.toBeInTheDocument();
+  }, 15000);
+
+  it('G16 创建任务成功后自动打开新任务详情（PENDING 状态/任务 ID/窗口/证券数/分片数）', async () => {
+    mockedCreateTask.mockResolvedValue(newPendingTask);
+    mockedGetTask.mockResolvedValue(newPendingTask);
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    await selectAntdOption('backfill-dataset-select', DATASET_LABEL);
+    fireEvent.change(screen.getByTestId('backfill-start-date'), { target: { value: '2026-07-01' } });
+    fireEvent.change(screen.getByTestId('backfill-end-date'), { target: { value: '2026-07-03' } });
+    fireEvent.change(screen.getByTestId('backfill-symbols'), { target: { value: 'SH.600519' } });
+    fireEvent.click(screen.getByTestId('backfill-submit'));
+
+    await waitFor(() => expect(mockedCreateTask).toHaveBeenCalledTimes(1));
+    // 新任务详情抽屉自动打开并展示 PENDING（待启动）、任务 ID、窗口、证券数与分片统计
+    expect(await screen.findByText('回补任务 #77（CN_DAILY_BAR）')).toBeInTheDocument();
+    expect(screen.getByTestId('task-detail-status')).toHaveTextContent('待启动');
+    expect(screen.getAllByText('2026-07-01 ~ 2026-07-03').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('task-chunk-progress')).toHaveTextContent('0 / 0 / 1');
+    await waitFor(() => expect(mockedGetTask).toHaveBeenCalledWith(77));
+    // 创建后表单已重置（起始日期输入为空）
+    expect((screen.getByTestId('backfill-start-date') as HTMLInputElement).value).toBe('');
+  }, 15000);
 
   it('G06 创建数据集成功后刷新并自动选中新数据集', async () => {
     mockedCreateDataset.mockResolvedValue({

@@ -1,11 +1,15 @@
 /**
  * 回补任务创建表单。
  *
- * - dataset 下拉（数据来自 GET /datasets）；market/provider/frequency/adjust 随所选数据集
- *   自动带出并以只读方式展示（后端 CreateBackfillTaskDTO 必填，不提供另选入口防口径混用）。
- * - 数据集为空时给出"新建数据集"入口（DatasetCreateModal），创建成功后自动选中。
- * - 起止日期为 YYYY-MM-DD 文本输入并严格校验（格式/真实日历日/先后顺序/不早于 2021-01-01）。
+ * - dataset 下拉只展示在线回补数据集（Provider=TENCENT_PUBLIC，用途隔离：导入类数据集
+ *   只用于 CSV 导入通道，不进入回补下拉，不依赖用户理解 Provider 差异）；
+ *   market/provider/frequency/adjust 随所选数据集自动带出并以只读方式展示。
+ * - 数据集为空或无在线回补数据集时给出"新建数据集"入口（Provider 锁定 TENCENT_PUBLIC），
+ *   创建成功后自动选中。
+ * - 起止日期为 YYYY-MM-DD 文本输入并严格校验（格式/真实日历日/先后顺序/不早于 2021-01-01）；
+ *   结束日期晚于今天仅前端提示（warningOnly 不阻断），最终校验以后端为准。
  * - symbols 可选：逗号或空白分隔；chunkSize 可选 1-500（后端 MAX_CHUNK_SIZE）。
+ * - 创建成功回调携带新任务（页面自动定位任务详情）。
  * - 业务失败（如 DATA_FOUNDATION_*）展示后端 message，绝不伪造成功。
  */
 import { useMemo, useState } from 'react';
@@ -14,11 +18,13 @@ import { useCreateBackfillTask, useFoundationDatasets } from '../hooks/useDataFo
 import {
   EARLIEST_START_DATE,
   MAX_CHUNK_SIZE,
+  ONLINE_BACKFILL_PROVIDER,
   compareDateString,
   isValidDateString,
   parseSymbolsInput,
+  todayDateString,
 } from '../model/format';
-import type { Dataset } from '../model/types';
+import type { BackfillTask, Dataset } from '../model/types';
 import { DatasetCreateModal } from './DatasetCreateModal';
 
 const { Text } = Typography;
@@ -32,8 +38,8 @@ interface FormValues {
 }
 
 export interface BackfillTaskFormHandle {
-  /** 提交成功后回调（页面可用于切 Tab/聚焦新任务）。 */
-  onCreated?: () => void;
+  /** 提交成功后回调（携带新任务，页面用于刷新列表并自动定位任务详情）。 */
+  onCreated?: (task: BackfillTask) => void;
 }
 
 export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
@@ -42,18 +48,25 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
   const createTask = useCreateBackfillTask();
   const [createOpen, setCreateOpen] = useState(false);
 
+  const onlineDatasets = useMemo(
+    () => (datasets.data ?? []).filter((dataset: Dataset) => dataset.providerCode === ONLINE_BACKFILL_PROVIDER),
+    [datasets.data],
+  );
   const datasetOptions = useMemo(
     () =>
-      (datasets.data ?? []).map((dataset: Dataset) => ({
+      onlineDatasets.map((dataset: Dataset) => ({
         value: dataset.datasetCode,
         label: `${dataset.datasetCode}（${dataset.datasetName}）`,
         dataset,
       })),
-    [datasets.data],
+    [onlineDatasets],
   );
 
   const selectedDatasetCode = Form.useWatch('datasetCode', form);
   const selectedDataset = datasetOptions.find((option) => option.value === selectedDatasetCode)?.dataset ?? null;
+
+  const noOnlineDataset =
+    datasets.isSuccess && (datasets.data ?? []).length > 0 && onlineDatasets.length === 0;
 
   const onFinish = (values: FormValues) => {
     if (!selectedDataset) return;
@@ -70,9 +83,9 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
         chunkSize: values.chunkSize,
       },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           form.resetFields();
-          onCreated?.();
+          onCreated?.(created);
         },
       },
     );
@@ -106,7 +119,26 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
           title="尚无数据集"
           description={
             <Space direction="vertical" size={4}>
-              <Text type="secondary">全新部署请先创建数据集（首期支持 TENCENT_PUBLIC 线上回补与 IMPORT_CSV_DAILY 导入）。</Text>
+              <Text type="secondary">全新部署请先创建在线回补数据集（Provider 固定 TENCENT_PUBLIC，腾讯公共源·实验性）。</Text>
+              <Button size="small" onClick={() => setCreateOpen(true)} data-testid="backfill-create-dataset-entry">
+                新建数据集
+              </Button>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {noOnlineDataset && (
+        <Alert
+          type="info"
+          showIcon
+          title="暂无支持在线回补的数据集"
+          description={
+            <Space direction="vertical" size={4}>
+              <Text type="secondary">
+                现有数据集均为导入类（IMPORT_*），只用于 CSV 导入页签，不能创建回补任务；如需在线回补请新建 TENCENT_PUBLIC 数据集。
+              </Text>
               <Button size="small" onClick={() => setCreateOpen(true)} data-testid="backfill-create-dataset-entry">
                 新建数据集
               </Button>
@@ -119,6 +151,7 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
       <DatasetCreateModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
+        providerLocked={ONLINE_BACKFILL_PROVIDER}
         onCreated={(code) => form.setFieldValue('datasetCode', code)}
       />
 
@@ -153,27 +186,38 @@ export function BackfillTaskForm({ onCreated }: BackfillTaskFormHandle) {
         <Input placeholder="2026-07-01" data-testid="backfill-start-date" />
       </Form.Item>
 
-      <Form.Item
-        name="endDate"
-        label="截止日期（YYYY-MM-DD）"
-        dependencies={['startDate']}
-        rules={[
-          { required: true, message: '请输入截止日期' },
-          {
-            validator: (_rule, value: string | undefined) => {
-              if (!value) return Promise.resolve();
-              if (!isValidDateString(value)) return Promise.reject(new Error('日期格式必须为 YYYY-MM-DD 且是真实日历日'));
-              const start = form.getFieldValue('startDate') as string | undefined;
-              if (start && isValidDateString(start) && compareDateString(value, start) < 0) {
-                return Promise.reject(new Error('截止日期不能早于起始日期'));
-              }
-              return Promise.resolve();
+        <Form.Item
+          name="endDate"
+          label="截止日期（YYYY-MM-DD）"
+          dependencies={['startDate']}
+          rules={[
+            { required: true, message: '请输入截止日期' },
+            {
+              validator: (_rule, value: string | undefined) => {
+                if (!value) return Promise.resolve();
+                if (!isValidDateString(value)) return Promise.reject(new Error('日期格式必须为 YYYY-MM-DD 且是真实日历日'));
+                const start = form.getFieldValue('startDate') as string | undefined;
+                if (start && isValidDateString(start) && compareDateString(value, start) < 0) {
+                  return Promise.reject(new Error('截止日期不能早于起始日期'));
+                }
+                return Promise.resolve();
+              },
             },
-          },
-        ]}
-      >
-        <Input placeholder="2026-07-31" data-testid="backfill-end-date" />
-      </Form.Item>
+            {
+              // 结束日期晚于今天：仅前端提示（warningOnly 不阻断提交），最终校验以后端为准。
+              warningOnly: true,
+              validator: (_rule, value: string | undefined) => {
+                if (!value || !isValidDateString(value)) return Promise.resolve();
+                if (compareDateString(value, todayDateString()) > 0) {
+                  return Promise.reject(new Error('截止日期晚于今天，提交后以后端校验为准'));
+                }
+                return Promise.resolve();
+              },
+            },
+          ]}
+        >
+          <Input placeholder="2026-07-31" data-testid="backfill-end-date" />
+        </Form.Item>
 
       <Form.Item
         name="symbols"

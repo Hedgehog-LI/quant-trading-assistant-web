@@ -86,6 +86,20 @@ export const DATASET_PROVIDER_OPTIONS: { value: string; label: string }[] = [
   { value: 'IMPORT_CSV_DAILY', label: 'IMPORT_CSV_DAILY（CSV 导入·日 K）' },
 ];
 
+/** 在线回补唯一支持的首期 Provider（回补表单数据集下拉只展示该类数据集）。 */
+export const ONLINE_BACKFILL_PROVIDER = 'TENCENT_PUBLIC';
+
+/** 导入类 Provider 前缀（该类数据集只用于 CSV 导入通道，不进入回补下拉）。 */
+export const IMPORT_PROVIDER_PREFIX = 'IMPORT_';
+
+/** 今天（本地时区 YYYY-MM-DD；结束日期晚于今天的提示用，最终校验以后端为准）。 */
+export function todayDateString(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 /** datasetCode 校验：大写字母/数字/下划线，3-64 位。 */
 export function isValidDatasetCode(value: string): boolean {
   return /^[A-Z][A-Z0-9_]{2,63}$/.test(value);

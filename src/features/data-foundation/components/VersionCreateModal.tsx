@@ -4,10 +4,14 @@
  * - 版本窗口 startDate/endDate 严格校验（YYYY-MM-DD/真实日历日/先后顺序/不早于 2021-01-01）；
  * - 创建成功后由父级自动选中新版本；业务失败展示后端 message，不伪造版本。
  */
-import { useEffect } from 'react';
 import { Alert, Form, Input, Modal } from 'antd';
 import { useCreateDatasetVersion } from '../hooks/useDataFoundation';
-import { EARLIEST_START_DATE, compareDateString, isValidDateString } from '../model/format';
+import {
+  EARLIEST_START_DATE,
+  compareDateString,
+  isValidDateString,
+  todayDateString,
+} from '../model/format';
 
 interface FormValues {
   startDate?: string;
@@ -26,9 +30,11 @@ export function VersionCreateModal({ open, datasetCode, onClose, onCreated }: Ve
   const [form] = Form.useForm<FormValues>();
   const createVersion = useCreateDatasetVersion();
 
-  useEffect(() => {
-    if (open) form.resetFields();
-  }, [open, form]);
+  // Modal destroyOnHidden：重开时表单自动重建；关闭（任意途径）与成功时清理 mutation 错误态。
+  const resetAndClose = () => {
+    createVersion.reset();
+    onClose();
+  };
 
   const onFinish = (values: FormValues) => {
     if (!datasetCode) return;
@@ -36,6 +42,7 @@ export function VersionCreateModal({ open, datasetCode, onClose, onCreated }: Ve
       { datasetCode, body: { startDate: values.startDate as string, endDate: values.endDate as string } },
       {
         onSuccess: (version) => {
+          createVersion.reset();
           onClose();
           onCreated(version.id);
         },
@@ -47,7 +54,7 @@ export function VersionCreateModal({ open, datasetCode, onClose, onCreated }: Ve
     <Modal
       title={`新建版本（${datasetCode ?? '--'}）`}
       open={open}
-      onCancel={onClose}
+      onCancel={resetAndClose}
       onOk={() => form.submit()}
       okText="创建"
       cancelText="取消"
@@ -89,6 +96,17 @@ export function VersionCreateModal({ open, datasetCode, onClose, onCreated }: Ve
                 const start = form.getFieldValue('startDate') as string | undefined;
                 if (start && isValidDateString(start) && compareDateString(value, start) < 0) {
                   return Promise.reject(new Error('截止日期不能早于起始日期'));
+                }
+                return Promise.resolve();
+              },
+            },
+            {
+              // 结束日期晚于今天：仅前端提示（warningOnly 不阻断提交），最终校验以后端为准。
+              warningOnly: true,
+              validator: (_rule, value: string | undefined) => {
+                if (!value || !isValidDateString(value)) return Promise.resolve();
+                if (compareDateString(value, todayDateString()) > 0) {
+                  return Promise.reject(new Error('截止日期晚于今天，提交后以后端校验为准'));
                 }
                 return Promise.resolve();
               },

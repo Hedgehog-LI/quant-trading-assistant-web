@@ -19,7 +19,7 @@ import {
   useImportBatches,
   useUploadImportSnapshot,
 } from '../hooks/useDataFoundation';
-import { errorReportHasErrors, formatCount } from '../model/format';
+import { IMPORT_PROVIDER_PREFIX, errorReportHasErrors, formatCount } from '../model/format';
 import type { Dataset, ImportBatch, ImportKind } from '../model/types';
 import { DatasetCreateModal } from './DatasetCreateModal';
 import { ImportBatchTable } from './ImportBatchTable';
@@ -32,8 +32,6 @@ const IMPORT_KIND_OPTIONS: { value: ImportKind; label: string }[] = [
   { value: 'INDUSTRY_TAXONOMY', label: 'INDUSTRY_TAXONOMY（行业分类）' },
   { value: 'INDUSTRY_MEMBERSHIP_PIT', label: 'INDUSTRY_MEMBERSHIP_PIT（PIT 行业成分）' },
 ];
-
-const IMPORT_PROVIDER_PREFIX = 'IMPORT_';
 
 const { Text } = Typography;
 
@@ -209,7 +207,7 @@ export function ImportPanel() {
       <DatasetCreateModal
         open={datasetModalOpen}
         onClose={() => setDatasetModalOpen(false)}
-        defaultProviderCode="IMPORT_CSV_DAILY"
+        providerLocked="IMPORT_CSV_DAILY"
         onCreated={(code) => setImportDatasetCode(code)}
       />
       <VersionCreateModal
