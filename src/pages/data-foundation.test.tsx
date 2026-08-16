@@ -9,6 +9,8 @@ import { clearAll } from '../shared/api/localStorageClient';
 import { saveSettings } from '../features/settings/api/settingsApi';
 import {
   createBackfillTask,
+  createDataset,
+  createDatasetVersion,
   getBackfillTask,
   getReleasedVersion,
   listBackfillChunks,
@@ -18,8 +20,10 @@ import {
   listDatasetVersions,
   listImportBatches,
   listQualityResults,
+  pauseBackfillTask,
   publishVersion,
   retryFailedChunks,
+  runBackfillTask,
   runQualityCheck,
   uploadImportSnapshot,
 } from '../features/data-foundation/api/dataFoundationApi';
@@ -36,6 +40,8 @@ import { DataFoundationPage } from './data-foundation';
 
 vi.mock('../features/data-foundation/api/dataFoundationApi', () => ({
   listDatasets: vi.fn(),
+  createDataset: vi.fn(),
+  createDatasetVersion: vi.fn(),
   listDatasetVersions: vi.fn(),
   getReleasedVersion: vi.fn(),
   getBackfillTask: vi.fn(),
@@ -54,12 +60,16 @@ vi.mock('../features/data-foundation/api/dataFoundationApi', () => ({
 }));
 
 const mockedListDatasets = vi.mocked(listDatasets);
+const mockedCreateDataset = vi.mocked(createDataset);
+const mockedCreateVersion = vi.mocked(createDatasetVersion);
 const mockedListVersions = vi.mocked(listDatasetVersions);
 const mockedGetReleased = vi.mocked(getReleasedVersion);
 const mockedGetTask = vi.mocked(getBackfillTask);
 const mockedListChunks = vi.mocked(listBackfillChunks);
 const mockedListTasks = vi.mocked(listBackfillTasks);
 const mockedCreateTask = vi.mocked(createBackfillTask);
+const mockedRunTask = vi.mocked(runBackfillTask);
+const mockedPauseTask = vi.mocked(pauseBackfillTask);
 const mockedRetryChunks = vi.mocked(retryFailedChunks);
 const mockedRunQualityCheck = vi.mocked(runQualityCheck);
 const mockedListQuality = vi.mocked(listQualityResults);
@@ -77,7 +87,15 @@ const dataset: Dataset = {
   createdAt: '2026-08-16T09:00:00',
 };
 
+const importDataset: Dataset = {
+  id: 2, datasetCode: 'CN_DAILY_IMPORT', datasetName: 'A股日K导入数据集', marketCode: 'CN',
+  barType: 'DAILY', frequency: '1D', providerCode: 'IMPORT_CSV_DAILY', adjustType: 'NONE',
+  unitCaliber: null, description: null, currentVersionId: null,
+  createdAt: '2026-08-16T09:00:00',
+};
+
 const DATASET_LABEL = 'CN_DAILY_BAR（A股日K数据集）';
+const IMPORT_DATASET_LABEL = 'CN_DAILY_IMPORT（A股日K导入数据集）';
 
 const task: BackfillTask = {
   id: 7, datasetCode: 'CN_DAILY_BAR', datasetVersionId: 3, marketCode: 'CN',
@@ -88,6 +106,13 @@ const task: BackfillTask = {
   lastErrorMessage: '公共源 429', startedAt: '2026-08-16T10:00:00', finishedAt: null,
   createdAt: '2026-08-16T09:58:00', symbols: null, totalChunks: 10, succeededChunks: 8, failedChunks: 2,
 };
+
+const queuedTask: BackfillTask = {
+  ...task, id: 8, status: 'QUEUED', successCount: 0, failCount: 0,
+  succeededChunks: 0, failedChunks: 0, lastErrorCode: null, lastErrorMessage: null,
+};
+
+const pausedTask: BackfillTask = { ...task, id: 9, status: 'PAUSED' };
 
 const failedChunk: BackfillChunk = {
   id: 71, taskId: 7, chunkIndex: 3, symbols: ['SH.600519'], startDate: '2026-07-01',
@@ -101,6 +126,23 @@ const version: DatasetVersion = {
   startDate: '2021-01-01', endDate: '2026-07-31', sourceProvider: 'TENCENT_PUBLIC', sourceNote: null,
   rowCount: 1200, qualifiedAt: '2026-08-01T00:00:00', releasedAt: null,
   createdAt: '2026-07-31T20:00:00', isCurrentReleased: false,
+  contentHash: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+  manifestRowCount: 1188, lineageStatus: 'PENDING',
+};
+
+const rejectedVersion: DatasetVersion = {
+  id: 4, datasetId: 1, datasetCode: 'CN_DAILY_BAR', versionCode: 'V202607', status: 'REJECTED',
+  startDate: '2026-07-01', endDate: '2026-07-03', sourceProvider: 'IMPORT_CSV_DAILY', sourceNote: null,
+  rowCount: 3, qualifiedAt: null, releasedAt: null,
+  createdAt: '2026-08-16T08:00:00', isCurrentReleased: false,
+  contentHash: null, manifestRowCount: null, lineageStatus: null,
+};
+
+const draftVersion: DatasetVersion = {
+  id: 21, datasetId: 2, datasetCode: 'CN_DAILY_IMPORT', versionCode: 'V2021H1', status: 'DRAFT',
+  startDate: '2021-01-04', endDate: '2021-01-06', sourceProvider: 'IMPORT_CSV_DAILY', sourceNote: null,
+  rowCount: null, qualifiedAt: null, releasedAt: null,
+  createdAt: '2026-08-16T12:00:00', isCurrentReleased: false,
 };
 
 const qualityResults: QualityResult[] = [
@@ -125,14 +167,14 @@ const historyBatch: ImportBatch = {
   id: 11, importKind: 'DAILY_BAR', providerCode: 'IMPORT_CSV_DAILY', fileName: 'bars.csv',
   fileHash: 'abc', insertedCount: 5, updatedCount: 2, skippedCount: 1, rejectedCount: 3,
   status: 'COMPLETED', errorReportJson: '{"errors":[{"line":3,"reason":"OHLC 无效"}]}',
-  createdAt: '2026-08-16T11:00:00',
+  createdAt: '2026-08-16T11:00:00', datasetVersionId: 21,
 };
 
 const uploadedBatch: ImportBatch = {
   id: 12, importKind: 'DAILY_BAR', providerCode: 'IMPORT_CSV_DAILY', fileName: 'bars2.csv',
   fileHash: 'def', insertedCount: 5, updatedCount: 2, skippedCount: 1, rejectedCount: 2,
   status: 'COMPLETED', errorReportJson: '{"errors":[{"line":9,"reason":"非交易日"}]}',
-  createdAt: '2026-08-16T11:05:00',
+  createdAt: '2026-08-16T11:05:00', datasetVersionId: 21,
 };
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -162,9 +204,11 @@ beforeEach(() => {
   saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
   vi.clearAllMocks();
   // 默认成功夹具；单个用例按需覆盖。
-  mockedListDatasets.mockResolvedValue([dataset]);
+  mockedListDatasets.mockResolvedValue([dataset, importDataset]);
   mockedListTasks.mockResolvedValue({ items: [], total: 0, page: 1, size: 10 });
-  mockedListVersions.mockResolvedValue([version]);
+  mockedListVersions.mockImplementation(async (code: string) =>
+    code === 'CN_DAILY_IMPORT' ? [draftVersion] : [version, rejectedVersion],
+  );
   mockedGetReleased.mockResolvedValue(null);
   mockedGetTask.mockResolvedValue(task);
   mockedListChunks.mockResolvedValue([failedChunk]);
@@ -240,12 +284,12 @@ describe('DataFoundationPage（数据中心）', () => {
     expect(screen.getByText('回补窗口与数据集版本冲突')).toBeInTheDocument();
   });
 
-  it('F02 任务列表渲染状态 Tag 与计数（null 显示 --），刷新触发重新查询', async () => {
+  it('F02 任务列表渲染状态中文标签与计数（null 显示 --），刷新触发重新查询', async () => {
     mockedListTasks.mockResolvedValue({ items: [task], total: 1, page: 1, size: 10 });
     render(<DataFoundationPage />, { wrapper: Wrapper });
 
     const statusTag = await screen.findByTestId('task-status-PARTIAL_FAILED');
-    expect(statusTag).toHaveTextContent('PARTIAL_FAILED');
+    expect(statusTag).toHaveTextContent('部分失败');
     expect(statusTag.className).toContain('ant-tag-warning');
     // null 计数（写入/更新）显示 '-- / --'，不显示 0
     expect(screen.getAllByText('-- / --').length).toBeGreaterThan(0);
@@ -256,6 +300,223 @@ describe('DataFoundationPage（数据中心）', () => {
     fireEvent.click(screen.getByTestId('backfill-refresh'));
     await waitFor(() => expect(mockedListTasks).toHaveBeenCalledTimes(2));
   });
+
+  it('G01 QUEUED 状态渲染为"排队中"，抽屉内暂停可用、启动禁用', async () => {
+    mockedListTasks.mockResolvedValue({ items: [queuedTask], total: 1, page: 1, size: 10 });
+    mockedGetTask.mockResolvedValue(queuedTask);
+    mockedPauseTask.mockResolvedValue(undefined);
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    const statusTag = await screen.findByTestId('task-status-QUEUED');
+    expect(statusTag).toHaveTextContent('排队中');
+    expect(statusTag.className).toContain('ant-tag-processing');
+
+    fireEvent.click(screen.getByTestId('task-detail-btn-8'));
+    expect(await screen.findByTestId('task-detail-status')).toHaveTextContent('排队中');
+
+    // QUEUED：启动禁用（防重复启动），暂停可用
+    expect(screen.getByTestId('backfill-run-btn')).toBeDisabled();
+    expect(screen.getByTestId('backfill-pause-btn')).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('backfill-pause-btn'));
+    await waitFor(() => expect(mockedPauseTask).toHaveBeenCalledWith(8));
+    expect(mockedPauseTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('G02 run 快速返回 QUEUED 后立即刷新任务详情（invalidate 生效）', async () => {
+    mockedListTasks.mockResolvedValue({ items: [pausedTask], total: 1, page: 1, size: 10 });
+    mockedGetTask.mockResolvedValue(pausedTask);
+    mockedRunTask.mockResolvedValue(queuedTask);
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(await screen.findByTestId('task-detail-btn-9'));
+    await waitFor(() => expect(mockedGetTask).toHaveBeenCalledTimes(1));
+    const runBtn = await screen.findByTestId('backfill-run-btn');
+    expect(runBtn).not.toBeDisabled();
+
+    fireEvent.click(runBtn);
+    await waitFor(() => expect(mockedRunTask).toHaveBeenCalledWith(9));
+    // run 成功后任务详情被 invalidate 重新查询（不等待轮询）
+    await waitFor(() => expect(mockedGetTask.mock.calls.filter(([id]) => id === 9).length).toBeGreaterThanOrEqual(2));
+  });
+
+  it('G03 重复点击启动不会重复发起 run 请求', async () => {
+    mockedListTasks.mockResolvedValue({ items: [pausedTask], total: 1, page: 1, size: 10 });
+    mockedGetTask.mockResolvedValue(pausedTask);
+    mockedRunTask.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(queuedTask), 100)));
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(await screen.findByTestId('task-detail-btn-9'));
+    await screen.findByTestId('backfill-run-btn');
+
+    const runBtn = screen.getByTestId('backfill-run-btn');
+    fireEvent.click(runBtn);
+    fireEvent.click(runBtn);
+    fireEvent.click(runBtn);
+
+    await waitFor(() => expect(mockedRunTask).toHaveBeenCalledTimes(1));
+    // pending 期间按钮进入 loading 即禁用，后续点击不触发
+    await waitFor(() => expect(mockedRunTask.mock.calls.length).toBe(1));
+  });
+
+  it('G04 抽屉分片表展示二维信息：日期窗口与计数', async () => {
+    mockedListTasks.mockResolvedValue({ items: [task], total: 1, page: 1, size: 10 });
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(await screen.findByTestId('task-detail-btn-7'));
+    expect(await screen.findByTestId('chunk-window-3')).toHaveTextContent('2026-07-01 ~ 2026-07-02');
+    expect(screen.getByTestId('chunk-counts-3')).toHaveTextContent('0 / 0 / 0 / 1');
+  });
+
+  it('G05 数据集为空时给出创建入口（不只是空下拉）', async () => {
+    mockedListDatasets.mockResolvedValue([]);
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(screen.getByRole('tab', { name: '数据集与版本' }));
+    expect(await screen.findByTestId('create-dataset-entry')).toBeInTheDocument();
+    expect(screen.getByTestId('create-dataset-entry-btn')).toBeInTheDocument();
+    // 回补表单同样给出创建入口
+    expect(screen.getByTestId('backfill-create-dataset-entry')).toBeInTheDocument();
+  });
+
+  it('G06 创建数据集成功后刷新并自动选中新数据集', async () => {
+    mockedCreateDataset.mockResolvedValue({
+      ...dataset, id: 9, datasetCode: 'CN_DAILY_NEW', datasetName: '新数据集', currentVersionId: null,
+    });
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(screen.getByRole('tab', { name: '数据集与版本' }));
+    fireEvent.click(await screen.findByTestId('create-dataset-btn'));
+
+    fireEvent.change(await screen.findByTestId('dataset-create-code'), { target: { value: 'CN_DAILY_NEW' } });
+    fireEvent.change(screen.getByTestId('dataset-create-name'), { target: { value: '新数据集' } });
+    await selectAntdOption('dataset-create-provider', 'TENCENT_PUBLIC（腾讯公共源·实验性）');
+    fireEvent.click(screen.getByRole('button', { name: '创 建' }));
+
+    await waitFor(() => expect(mockedCreateDataset).toHaveBeenCalledTimes(1));
+    expect(mockedCreateDataset).toHaveBeenCalledWith({
+      datasetCode: 'CN_DAILY_NEW', datasetName: '新数据集', marketCode: 'CN',
+      barType: 'DAILY', frequency: '1D', providerCode: 'TENCENT_PUBLIC', adjustType: 'NONE',
+      description: undefined,
+    });
+    // 数据集列表刷新 + 新数据集自动选中（触发其版本查询）
+    await waitFor(() => expect(mockedListDatasets.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(mockedListVersions).toHaveBeenCalledWith('CN_DAILY_NEW'));
+  }, 15000);
+
+  it('G07 导入 Tab：DAILY_BAR 未选择版本时禁止上传', async () => {
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+
+    await screen.findByTestId('import-version-flow');
+    const file = new File(['symbol,trade_date\nSH.600519,2026-07-01\n'], 'bars.csv', { type: 'text/csv' });
+    const input = document.querySelector('input[type="file"]') as HTMLElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByTestId('import-submit')).toBeDisabled());
+    expect(mockedUpload).not.toHaveBeenCalled();
+  });
+
+  it('G08 导入 Tab：DAILY_BAR 选择导入数据集与 DRAFT 版本后上传携带 datasetVersionId', async () => {
+    mockedUpload.mockResolvedValue(uploadedBatch);
+    const { container } = render(<DataFoundationPage />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+
+    await screen.findByTestId('import-version-flow');
+    await selectAntdOption('import-dataset-select', IMPORT_DATASET_LABEL);
+    await selectAntdOption('import-version-select', 'V2021H1（2021-01-04 ~ 2021-01-06）');
+
+    const file = new File(['symbol,trade_date,open,high,low,close,volume,amount\nSH.600519,2021-01-04,1,1,1,1,100,100\n'], 'bars2.csv', { type: 'text/csv' });
+    const input = container.querySelector('input[type="file"]') as HTMLElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const submit = screen.getByTestId('import-submit');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(mockedUpload).toHaveBeenCalledTimes(1));
+    expect(mockedUpload.mock.calls[0][0]).toBe('DAILY_BAR');
+    expect(mockedUpload.mock.calls[0][1]).toBe(file);
+    expect(mockedUpload.mock.calls[0][2]).toBe(21);
+
+    // 上传结果展示关联版本
+    expect(await screen.findByTestId('import-result')).toHaveTextContent('版本 #21');
+    // 历史批次关联版本列
+    expect(await screen.findByTestId('import-batch-version-11')).toHaveTextContent('#21');
+  }, 15000);
+
+  it('G09 非 DAILY_BAR 导入不强制版本（TRADING_CALENDAR 无版本关联直传）', async () => {
+    mockedUpload.mockResolvedValue({ ...uploadedBatch, importKind: 'TRADING_CALENDAR', datasetVersionId: null });
+    const { container } = render(<DataFoundationPage />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+
+    await screen.findByTestId('import-version-flow');
+    await selectAntdOption('import-kind-select', 'TRADING_CALENDAR（交易日历）');
+    // 切换非 DAILY_BAR 后不渲染版本选择区
+    await waitFor(() => expect(screen.queryByTestId('import-version-select')).not.toBeInTheDocument());
+
+    const file = new File(['market_code,trade_date,is_trading_day\nCN,2026-07-01,true\n'], 'cal.csv', { type: 'text/csv' });
+    const input = container.querySelector('input[type="file"]') as HTMLElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const submit = screen.getByTestId('import-submit');
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(mockedUpload).toHaveBeenCalledTimes(1));
+    expect(mockedUpload.mock.calls[0][0]).toBe('TRADING_CALENDAR');
+    expect(mockedUpload.mock.calls[0][2]).toBeUndefined();
+  }, 15000);
+
+  it('G10 导入 Tab：新建版本（POST /datasets/{code}/versions）成功后自动选中', async () => {
+    mockedCreateVersion.mockResolvedValue({ ...draftVersion, id: 22, versionCode: 'V2021H2' });
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+
+    await screen.findByTestId('import-version-flow');
+    await selectAntdOption('import-dataset-select', IMPORT_DATASET_LABEL);
+    await waitFor(() => expect(screen.getByTestId('import-create-version-btn')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('import-create-version-btn'));
+
+    fireEvent.change(await screen.findByTestId('version-create-start'), { target: { value: '2021-07-01' } });
+    fireEvent.change(screen.getByTestId('version-create-end'), { target: { value: '2021-07-31' } });
+    fireEvent.click(screen.getByRole('button', { name: '创 建' }));
+
+    await waitFor(() => expect(mockedCreateVersion).toHaveBeenCalledTimes(1));
+    expect(mockedCreateVersion).toHaveBeenCalledWith('CN_DAILY_IMPORT', { startDate: '2021-07-01', endDate: '2021-07-31' });
+  }, 15000);
+
+  it('G11 版本展示 contentHash 缩略 / manifestRowCount / lineageStatus 异常警告', async () => {
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(screen.getByRole('tab', { name: '数据集与版本' }));
+    await selectAntdOption('dataset-select', DATASET_LABEL);
+
+    expect(await screen.findByTestId('version-hash-3')).toHaveTextContent('abcdef12…7890');
+    expect(await screen.findByTestId('version-manifest-3')).toHaveTextContent('1188');
+    const lineageTag = screen.getByTestId('version-lineage-3');
+    expect(lineageTag).toHaveTextContent('PENDING');
+    expect(lineageTag.className).toContain('ant-tag-warning');
+  }, 15000);
+
+  it('G12 REJECTED 版本发布按钮禁用，展开显示主要失败质量项；QUALIFIED 才可发布', async () => {
+    render(<DataFoundationPage />, { wrapper: Wrapper });
+
+    fireEvent.click(screen.getByRole('tab', { name: '数据集与版本' }));
+    await selectAntdOption('dataset-select', DATASET_LABEL);
+    await screen.findByText('V20260731');
+
+    // REJECTED 版本发布禁用；QUALIFIED 版本发布可用
+    expect(screen.getByTestId('publish-btn-4')).toBeDisabled();
+    expect(screen.getByTestId('publish-btn-3')).not.toBeDisabled();
+
+    // 展开 REJECTED 行查看失败项（antd 对不可展开行渲染 spaced 占位图标，取真实可展开的那个）
+    const expandIcons = Array.from(document.querySelectorAll('.ant-table-row-expand-icon'));
+    const expandBtn = expandIcons.find((node) => !node.className.includes('spaced'));
+    expect(expandBtn).toBeDefined();
+    fireEvent.click(expandBtn as HTMLElement);
+    expect(await screen.findByTestId('rejected-fails-4')).toHaveTextContent('DAILY_BAR_GAP');
+  }, 15000);
 
   it('F03 详情抽屉展示分片失败原因，重试按钮触发 retryFailedChunks', async () => {
     mockedListTasks.mockResolvedValue({ items: [task], total: 1, page: 1, size: 10 });
@@ -277,7 +538,7 @@ describe('DataFoundationPage（数据中心）', () => {
     expect(mockedRetryChunks).toHaveBeenCalledTimes(1);
   });
 
-  it('F04 版本质量结果 FAIL/WARN 标色、覆盖率百分比与 null 占位，质量检查/发布可触发', async () => {
+  it('F04 版本质量结果 FAIL/WARN 标色、覆盖率百分比与 null 占位，质量检查/发布可触发，FAIL 给出阻断说明', async () => {
     mockedRunQualityCheck.mockResolvedValue(qualityResults);
     render(<DataFoundationPage />, { wrapper: Wrapper });
 
@@ -288,11 +549,13 @@ describe('DataFoundationPage（数据中心）', () => {
     expect(await screen.findByText('V20260731')).toBeInTheDocument();
     expect(await screen.findByText(/尚未发布任何版本/)).toBeInTheDocument();
 
-    // 点击版本行 → 覆盖率与质量结果
+    // 点击版本行 → 覆盖率与质量结果 + 发布门禁阻断说明（FAIL 来源真实质量结果）
     fireEvent.click(screen.getByText('V20260731'));
     expect(await screen.findByTestId('coverage-quality-3')).toBeInTheDocument();
+    expect(await screen.findByTestId('publish-gate-blocked')).toHaveTextContent('DAILY_BAR_GAP');
+    expect(screen.getByTestId('publish-gate-blocked')).toHaveTextContent('UNIT_ANOMALY');
 
-    const failTag = await screen.findByTestId('quality-status-FAIL');
+    const failTag = screen.getByTestId('quality-status-FAIL');
     expect(failTag).toHaveTextContent('FAIL');
     expect(failTag.className).toContain('ant-tag-error');
     const warnTag = screen.getByTestId('quality-status-WARN');
@@ -314,38 +577,7 @@ describe('DataFoundationPage（数据中心）', () => {
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(3));
   }, 15000);
 
-  it('F05 导入上传走 kind+file，结果计数与错误报告展示，历史批次含错误行', async () => {
-    mockedUpload.mockResolvedValue(uploadedBatch);
-    const { container } = render(<DataFoundationPage />, { wrapper: Wrapper });
-
-    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
-
-    // 历史批次计数与错误报告
-    expect(await screen.findByText('bars.csv')).toBeInTheDocument();
-    expect(screen.getByTestId('import-error-11')).toHaveTextContent('OHLC 无效');
-
-    // 上传：选择文件 → 提交
-    const file = new File(['trade_date,symbol\n2026-07-01,SH.600519\n'], 'bars2.csv', { type: 'text/csv' });
-    const input = container.querySelector('input[type="file"]') as HTMLElement;
-    fireEvent.change(input, { target: { files: [file] } });
-
-    const submit = await screen.findByTestId('import-submit');
-    await waitFor(() => expect(submit).not.toBeDisabled());
-    fireEvent.click(submit);
-
-    await waitFor(() => expect(mockedUpload).toHaveBeenCalledTimes(1));
-    expect(mockedUpload.mock.calls[0][0]).toBe('DAILY_BAR');
-    expect(mockedUpload.mock.calls[0][1]).toBe(file);
-
-    // 上传结果：批次计数 + 错误报告展开
-    expect(await screen.findByTestId('import-result')).toHaveTextContent('批次 #12');
-    expect(screen.getByText('新增 5')).toBeInTheDocument();
-    expect(screen.getByText('更新 2')).toBeInTheDocument();
-    expect(screen.getByText('拒绝 2')).toBeInTheDocument();
-    expect(screen.getByTestId('import-result-error-report')).toHaveTextContent('非交易日');
-  });
-
-  it('F06 mock 模式仅提示切换后端模式，不调用任何 api、无假数据', () => {
+  it('F05 mock 模式仅提示切换后端模式，不调用任何 api、无假数据', () => {
     saveSettings({ apiMode: 'mock', apiBaseUrl: '' });
     render(<DataFoundationPage />, { wrapper: Wrapper });
 
@@ -362,7 +594,7 @@ describe('DataFoundationPage（数据中心）', () => {
 
     // 不渲染任何演示任务/数据集/批次
     expect(screen.queryByText('CN_DAILY_BAR')).not.toBeInTheDocument();
-    expect(screen.queryByText('PARTIAL_FAILED')).not.toBeInTheDocument();
+    expect(screen.queryByText('部分失败')).not.toBeInTheDocument();
     expect(screen.queryByText('回补任务')).not.toBeInTheDocument();
   });
 

@@ -4,6 +4,8 @@ import { clearAll } from '../../../shared/api/localStorageClient';
 import { saveSettings } from '../../settings/api/settingsApi';
 import {
   createBackfillTask,
+  createDataset,
+  createDatasetVersion,
   getReleasedVersion,
   listBackfillTasks,
   listDatasets,
@@ -144,6 +146,55 @@ describe('dataFoundationApi', () => {
     expect(config).toEqual({ params: { kind: 'DAILY_BAR' } });
     expect(JSON.stringify(config)).not.toContain('Content-Type');
     expect(batch.rejectedCount).toBe(1);
+  });
+
+  it('创建数据集 POST /datasets 组装首期冻结 body', async () => {
+    saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
+    const post = vi.spyOn(client, 'post').mockResolvedValue(
+      okResponse({
+        id: 9, datasetCode: 'CN_DAILY_NEW', datasetName: '新数据集', marketCode: 'CN',
+        barType: 'DAILY', frequency: '1D', providerCode: 'TENCENT_PUBLIC', adjustType: 'NONE',
+        unitCaliber: null, description: null, currentVersionId: null, createdAt: null,
+      }),
+    );
+
+    const created = await createDataset({
+      datasetCode: 'CN_DAILY_NEW', datasetName: '新数据集', marketCode: 'CN',
+      barType: 'DAILY', frequency: '1D', providerCode: 'TENCENT_PUBLIC', adjustType: 'NONE',
+    });
+
+    expect(post).toHaveBeenCalledWith('/market-data/data-foundation/datasets', {
+      datasetCode: 'CN_DAILY_NEW', datasetName: '新数据集', marketCode: 'CN',
+      barType: 'DAILY', frequency: '1D', providerCode: 'TENCENT_PUBLIC', adjustType: 'NONE',
+      description: undefined,
+    });
+    expect(created.datasetCode).toBe('CN_DAILY_NEW');
+  });
+
+  it('创建数据集版本 POST /datasets/{code}/versions 组装 startDate/endDate body', async () => {
+    saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
+    const post = vi.spyOn(client, 'post').mockResolvedValue(
+      okResponse({ ...minimalVersion, id: 22, status: 'DRAFT' }),
+    );
+
+    const version = await createDatasetVersion('CN_DAILY_IMPORT', { startDate: '2021-01-04', endDate: '2021-01-06' });
+
+    expect(post).toHaveBeenCalledWith('/market-data/data-foundation/datasets/CN_DAILY_IMPORT/versions', {
+      startDate: '2021-01-04', endDate: '2021-01-06',
+    });
+    expect(version.status).toBe('DRAFT');
+  });
+
+  it('DAILY_BAR 导入携带 datasetVersionId 查询参数；不传时参数剔除', async () => {
+    saveSettings({ apiMode: 'remote', apiBaseUrl: '' });
+    const post = vi.spyOn(client, 'post').mockResolvedValue(okResponse(minimalBatch));
+    const file = new File(['symbol,trade_date\nSH.600519,2021-01-04\n'], 'bars.csv', { type: 'text/csv' });
+
+    await uploadImportSnapshot('DAILY_BAR', file, 21);
+    expect(post.mock.calls[0][2]).toEqual({ params: { kind: 'DAILY_BAR', datasetVersionId: 21 } });
+
+    await uploadImportSnapshot('TRADING_CALENDAR', file);
+    expect(post.mock.calls[1][2]).toEqual({ params: { kind: 'TRADING_CALENDAR', datasetVersionId: undefined } });
   });
 
   it('导入批次列表 kind 省略时参数剔除、路径正确', async () => {
